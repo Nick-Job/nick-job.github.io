@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+    <id>https://nick-job.github.io/</id>
+    <title>JIA</title>
+    <updated>2022-07-25T09:20:12.180Z</updated>
+    <generator>https://github.com/jpmonette/feed</generator>
+    <link rel="alternate" href="https://nick-job.github.io/"/>
+    <link rel="self" href="https://nick-job.github.io/atom.xml"/>
+    <subtitle>热爱折腾，保持冷静。</subtitle>
+    <logo>https://nick-job.github.io/images/avatar.png</logo>
+    <icon>https://nick-job.github.io/favicon.ico</icon>
+    <rights>All rights reserved 2022, JIA</rights>
+    <entry>
+        <title type="html"><![CDATA[TechXueXi-学习强国]]></title>
+        <id>https://nick-job.github.io/RmwL1sH3W/</id>
+        <link href="https://nick-job.github.io/RmwL1sH3W/">
+        </link>
+        <updated>2022-07-15T14:19:12.000Z</updated>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[Clash Windows客户端使用教程]]></title>
+        <id>https://nick-job.github.io/lR4IhC_y-/</id>
+        <link href="https://nick-job.github.io/lR4IhC_y-/">
+        </link>
+        <updated>2022-07-15T12:58:40.000Z</updated>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[随想：2014.06.07]]></title>
+        <id>https://nick-job.github.io/oYBxhY1le/</id>
+        <link href="https://nick-job.github.io/oYBxhY1le/">
+        </link>
+        <updated>2022-07-12T16:32:42.000Z</updated>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[随想：2022.05.14]]></title>
+        <id>https://nick-job.github.io/Y69VgEFqs/</id>
+        <link href="https://nick-job.github.io/Y69VgEFqs/">
+        </link>
+        <updated>2022-07-12T15:44:19.000Z</updated>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[2021]]></title>
+        <id>https://nick-job.github.io/rNmXWSRtW/</id>
+        <link href="https://nick-job.github.io/rNmXWSRtW/">
+        </link>
+        <updated>2022-06-25T15:15:30.000Z</updated>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[关于]]></title>
+        <id>https://nick-job.github.io/about/</id>
+        <link href="https://nick-job.github.io/about/">
+        </link>
+        <updated>2019-01-25T11:09:48.000Z</updated>
+    </entry>
+</feed>
