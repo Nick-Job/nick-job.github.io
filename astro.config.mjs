@@ -5,6 +5,7 @@ import sitemap from '@astrojs/sitemap';
 
 // https://astro.build/config
 export default defineConfig({
-	site: 'https://example.com',
-	integrations: [mdx(), sitemap()],
+  site: 'https://nick-job.github.io', // 修正 URL
+  base: '/Astro-Nick/', // 替换为你的仓库名称
+  integrations: [mdx(), sitemap()],
 });
