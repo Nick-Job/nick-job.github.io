@@ -172,7 +172,7 @@ Nick-Job/boomb
 图库 GitHub Token：fine-grained Token
 ```
 
-Token 只授予 `Nick-Job/boomb` 的 `Contents: Read and write` 权限，仅保存在当前浏览器标签页，关闭标签页后清除。
+Token 只授予 `Nick-Job/boomb` 的 `Contents: Read and write` 权限，保存在本机浏览器，只需配置一次。
 
 素材图库的上传流程：
 

@@ -85,7 +85,7 @@ const state = {
   galleryBranch: localStorage.getItem('wb_gallery_branch') || 'main',
   galleryRoot: localStorage.getItem('wb_gallery_root') || 'images',
   galleryFolder: localStorage.getItem('wb_gallery_folder') || 'uploads',
-  galleryToken: sessionStorage.getItem('wb_gallery_token') || '',
+  galleryToken: localStorage.getItem('wb_gallery_token') || sessionStorage.getItem('wb_gallery_token') || '',
   galleryUploading: false, galleryProgress: '',
   downloadInput: '', downloadResult: null, downloadBusy: false, downloadError: '',
   downloadHistory: (() => {
@@ -154,7 +154,8 @@ function persistGalleryConfig(values) {
   localStorage.setItem('wb_gallery_branch', state.galleryBranch);
   localStorage.setItem('wb_gallery_root', state.galleryRoot);
   localStorage.setItem('wb_gallery_folder', state.galleryFolder);
-  state.galleryToken ? sessionStorage.setItem('wb_gallery_token', state.galleryToken) : sessionStorage.removeItem('wb_gallery_token');
+  state.galleryToken ? localStorage.setItem('wb_gallery_token', state.galleryToken) : localStorage.removeItem('wb_gallery_token');
+  sessionStorage.removeItem('wb_gallery_token');
 }
 async function loadGalleryFromGitHub(force = false) {
   const cfg = galleryCfg();
@@ -1326,25 +1327,8 @@ function viewGallery() {
 function galleryUploadModal() {
   const cfg = galleryCfg();
   if (!state.galleryToken || !cfg.owner || !cfg.repo) {
-    openModal({
-      title: '配置素材图库上传',
-      body: `<form id="gallery-config-form" class="form-grid">
-        <div class="field full"><label>图库仓库（owner/repo）</label><input class="input" name="galleryRepo" value="${esc(state.galleryRepo)}" placeholder="YOUR_NAME/IMAGE_REPOSITORY" required></div>
-        <div class="field"><label>分支</label><input class="input" name="galleryBranch" value="${esc(state.galleryBranch)}" placeholder="main"></div>
-        <div class="field"><label>根目录</label><input class="input" name="galleryRoot" value="${esc(state.galleryRoot)}" placeholder="images"></div>
-        <div class="field"><label>上传子目录</label><input class="input" name="galleryFolder" value="${esc(state.galleryFolder)}" placeholder="uploads"></div>
-        <div class="field full"><label>GitHub Token</label><input class="input" name="galleryToken" type="password" value="${esc(state.galleryToken)}" placeholder="fine-grained Token" autocomplete="off" required>
-          <span class="hint">仅授予图库仓库 Contents 读写，只保存在当前标签页。<a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">创建 Token</a></span></div>
-      </form>`,
-      foot: `<button class="btn ghost" data-act="closeModal">取消</button><button class="btn primary" type="submit" form="gallery-config-form">保存并继续</button>`,
-    });
-    $('#gallery-config-form').addEventListener('submit', (e) => {
-      e.preventDefault();
-      persistGalleryConfig(Object.fromEntries(new FormData(e.target).entries()));
-      closeModal();
-      toast('图库上传配置已保存');
-      galleryUploadModal();
-    });
+    toast('请先在设置里配置图库仓库和 GitHub Token', 'err');
+    settingsModal();
     return;
   }
   openModal({
@@ -1618,7 +1602,7 @@ function settingsModal() {
       <div class="field"><label>上传子目录</label><input class="input" name="galleryFolder" value="${esc(state.galleryFolder)}" placeholder="uploads"></div>
       <div class="field full"><label>图库 GitHub Token</label>
         <input class="input" name="galleryToken" type="password" value="${esc(state.galleryToken)}" placeholder="fine-grained Token，仅授予图库仓库 Contents 读写" autocomplete="off">
-        <span class="hint">只保存在当前浏览器标签页；关闭标签页后需要重新填写。不要把 Token 写进仓库。<a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">创建 fine-grained Token</a></span></div>
+        <span class="hint">保存在本机浏览器，只需配置一次；不要把 Token 写进仓库。<a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">创建 fine-grained Token</a></span></div>
       <div class="field full"><label>飞书同步地址（Cloudflare Worker）</label>
         <input class="input" name="feishu" value="${esc(state.feishuUrl)}" placeholder="https://你的-worker.workers.dev">
         <span class="hint">填好 Worker 后，选题中枢会出现「从飞书同步」按钮。Worker 部署方法见仓库 worker/ 目录的说明。</span></div>
