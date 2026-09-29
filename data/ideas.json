@@ -1,7 +1,28 @@
 {
   "items": [
-    { "id": "id1", "text": "小红书可以做一个「封面标题公式」选题", "processed": false, "created": "2026-09-29T08:20:00+08:00" },
-    { "id": "id2", "text": "Seedance 角色一致性可以整理成模板", "processed": false, "created": "2026-09-28T22:05:00+08:00" },
-    { "id": "id3", "text": "把新榜热榜截图做成固定栏目，每周一更", "processed": false, "created": "2026-09-27T18:40:00+08:00" }
+    {
+      "id": "id1",
+      "text": "小红书可以做一个「封面标题公式」选题",
+      "processed": false,
+      "created": "2026-09-29T08:20:00+08:00"
+    },
+    {
+      "id": "id2",
+      "text": "Seedance 角色一致性可以整理成模板",
+      "processed": false,
+      "created": "2026-09-28T22:05:00+08:00"
+    },
+    {
+      "id": "id3",
+      "text": "把新榜热榜截图做成固定栏目，每周一更",
+      "processed": false,
+      "created": "2026-09-27T18:40:00+08:00"
+    },
+    {
+      "id": "sync_test",
+      "text": "同步按钮端到端测试（稍后删除）",
+      "processed": false,
+      "created": "2026-09-29T07:46:54.501Z"
+    }
   ]
 }
