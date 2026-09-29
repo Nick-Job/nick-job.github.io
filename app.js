@@ -558,7 +558,7 @@ function renderSidebar() {
     </button>`;
   }).join('');
   $('#sidebar').innerHTML = `
-    <div class="brand"><div class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4.5" width="16" height="3.2" rx="1.6"/><rect x="4" y="16.3" width="16" height="3.2" rx="1.6"/><rect x="10.4" y="4.5" width="3.2" height="15" rx="1.6"/></svg></div>
+    <div class="brand"><div class="brand-mark" aria-hidden="true"><svg viewBox="0 0 48 48" fill="none"><rect x="5" y="9" width="38" height="9" rx="4.5" fill="currentColor"/><rect x="5" y="20" width="30" height="9" rx="4.5" fill="currentColor" opacity=".55"/><rect x="5" y="31" width="38" height="9" rx="4.5" fill="currentColor" opacity=".28"/></svg></div>
       <div class="brand-name">NickWork</div>
     </div>
     <nav class="nav"><div class="nav-label">模块</div>${items}</nav>
