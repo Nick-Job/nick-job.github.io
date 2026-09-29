@@ -1,0 +1,16 @@
+{
+  "statuses": ["待评估", "已立项", "制作中", "待发布", "已发布", "已复盘"],
+  "signals": [
+    { "id": "sg1", "text": "抖音：citywalk 一镜到底话题两天热度翻了 3 倍，可蹭运镜教程", "handled": false, "created": "2026-09-28T21:10:00+08:00" },
+    { "id": "sg2", "text": "小红书：极简桌面改造笔记又爆了，评论区在要清单", "handled": false, "created": "2026-09-29T08:32:00+08:00" }
+  ],
+  "items": [
+    { "id": "tp1", "title": "「封面标题公式」拆解：3 个爆款笔记的标题结构", "platform": "小红书", "source": "评论区", "status": "待评估", "priority": "高", "eta": "2026-10-08", "prompts": [], "url": "", "review": "", "created": "2026-09-28T09:00:00+08:00" },
+    { "id": "tp2", "title": "30 秒城市夜景运镜翻拍", "platform": "抖音", "source": "热榜", "status": "待评估", "priority": "中", "eta": null, "prompts": [], "url": "", "review": "", "created": "2026-09-29T08:40:00+08:00" },
+    { "id": "tp3", "title": "AI 工具组合流工作法（公众号长文）", "platform": "公众号", "source": "对标拆解", "status": "已立项", "priority": "高", "eta": "2026-10-09", "prompts": ["pr1"], "url": "", "review": "", "created": "2026-09-26T14:20:00+08:00" },
+    { "id": "tp4", "title": "Midjourney 光影关键词速查表", "platform": "小红书", "source": "旧选题", "status": "制作中", "priority": "中", "eta": "2026-10-02", "prompts": ["pr1", "pr2"], "url": "", "review": "", "created": "2026-09-24T11:30:00+08:00" },
+    { "id": "tp5", "title": "Seedance 角色一致性实测", "platform": "抖音", "source": "灵感", "status": "待发布", "priority": "高", "eta": "2026-10-01", "prompts": ["pr3"], "url": "", "review": "", "created": "2026-09-25T16:45:00+08:00" },
+    { "id": "tp6", "title": "我的选题到发布全流程", "platform": "公众号", "source": "灵感", "status": "已发布", "priority": "中", "eta": "2026-09-26", "prompts": [], "url": "https://example.com/post-01", "views": "1.2w", "ctr": "5.2%", "saves": "在看 80", "review": "标题可复用", "created": "2026-09-20T10:00:00+08:00" },
+    { "id": "tp7", "title": "3 个免费素材网站合集", "platform": "小红书", "source": "旧选题", "status": "已复盘", "priority": "低", "eta": "2026-09-22", "prompts": [], "url": "https://example.com/post-02", "views": "3.4w", "ctr": "8.1%", "saves": "收藏 900", "review": "封面强，收藏率高", "created": "2026-09-18T09:20:00+08:00" }
+  ]
+}
