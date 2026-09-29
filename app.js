@@ -228,7 +228,7 @@ function renderSidebar() {
     </button>`).join('');
   const themeIcon = document.documentElement.dataset.theme === 'dark' ? 'sun' : 'moon';
   $('#sidebar').innerHTML = `
-    <div class="brand"><div class="brand-mark">${ic('check')}</div>
+    <div class="brand"><img class="brand-mark" src="assets/logo.png" alt="logo">
       <div><div class="brand-name">个人工作台</div><div class="brand-sub">${esc(repoCfg().owner)} 的内容创作台</div></div>
     </div>
     <nav class="nav"><div class="nav-label">模块</div>${items}</nav>
