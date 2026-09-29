@@ -4,6 +4,16 @@
 
 ## 本地启动
 
+不安装 Docker 时，可以直接运行：
+
+```bash
+./scripts/run-downloader.sh
+```
+
+脚本会自动创建 `.venv-downloader`、安装依赖并启动服务。首次运行需要联网下载 Python 依赖。
+
+使用 Docker：
+
 ```bash
 docker compose up --build -d
 ```

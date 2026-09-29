@@ -31,6 +31,12 @@ Cloudflare D1（数据库 nickwork）
 侧边栏「媒体下载」支持粘贴视频或图片链接，通过 `yt-dlp` 下载服务解析标题、封面和可选格式。下载服务不接入 Cloudflare D1，按需单独运行：
 
 ```bash
+./scripts/run-downloader.sh
+```
+
+或者使用 Docker：
+
+```bash
 docker compose up --build -d
 ```
 

@@ -20,9 +20,9 @@ from urllib.parse import quote, urlparse
 import httpx
 import yt_dlp
 from fastapi import FastAPI, Header, HTTPException, Query
-from fastapi.background import BackgroundTask
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
+from starlette.background import BackgroundTask
 
 APP_NAME = "NickWork Downloader"
 ALLOWED_ORIGINS = [x.strip() for x in os.getenv("ALLOWED_ORIGINS", "http://localhost:8123").split(",") if x.strip()]
