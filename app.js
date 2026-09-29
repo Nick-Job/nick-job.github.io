@@ -144,9 +144,12 @@ function safeUploadName(name) {
 function safeFolder(name) {
   return String(name || '').replace(/\\/g, '/').split('/').map((part) => part.normalize('NFKC').replace(/[\\/:*?"<>|]+/g, '-').replace(/^\.+$/, '').trim()).filter(Boolean).slice(0, 4).join('/');
 }
-async function loadGalleryFromGitHub() {
+async function loadGalleryFromGitHub(force = false) {
   const cfg = galleryCfg();
   if (!cfg.owner || !cfg.repo) throw new Error('还没有配置图片仓库');
+  const cached = cachedData('gallery');
+  const cachedAt = Number(localStorage.getItem('wb_gallery_cache_time') || 0);
+  if (!force && cached && Date.now() - cachedAt < 5 * 60 * 1000) { state.db.gallery = cached; return cached; }
   const tree = await galleryApi(`/repos/${cfg.owner}/${cfg.repo}/git/trees/${encodeURIComponent(cfg.branch)}?recursive=1`);
   const prefix = cfg.root ? cfg.root + '/' : '';
   const images = (tree.tree || [])
@@ -171,6 +174,7 @@ async function loadGalleryFromGitHub() {
   const data = { owner: cfg.owner, repo: cfg.repo, branch: cfg.branch, total: images.length, folders: [...groups].map(([name, items]) => ({ name, images: items })) };
   state.db.gallery = data;
   localStorage.setItem('wb_cache_gallery', JSON.stringify(data));
+  localStorage.setItem('wb_gallery_cache_time', String(Date.now()));
   return data;
 }
 async function uploadGalleryFiles(files, folder) {
@@ -1352,7 +1356,7 @@ function galleryUploadModal() {
     state.galleryUploading = true; state.galleryProgress = '准备上传'; renderView();
     try {
       const result = await uploadGalleryFiles(files, folder);
-      await loadGalleryFromGitHub();
+      await loadGalleryFromGitHub(true);
       toast(`已上传 ${result.count} 张图片`);
     } catch (e) {
       toast('上传失败：' + e.message, 'err');
@@ -1624,7 +1628,7 @@ function settingsModal() {
     state.galleryToken ? sessionStorage.setItem('wb_gallery_token', state.galleryToken) : sessionStorage.removeItem('wb_gallery_token');
     closeModal(); renderAll();
     if (!nextBase || changed) { showGate('数据服务地址已更新，请重新登录'); return; }
-    try { await loadGalleryFromGitHub(); renderView(); } catch (err) { toast('图库连接失败：' + err.message, 'err'); }
+    try { await loadGalleryFromGitHub(true); renderView(); } catch (err) { toast('图库连接失败：' + err.message, 'err'); }
     toast('设置已保存');
   });
   $('#st-test').addEventListener('click', async () => {
