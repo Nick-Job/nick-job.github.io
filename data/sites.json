@@ -1,0 +1,13 @@
+{
+  "groups": ["AI工具", "素材网站", "数据平台", "对标账号"],
+  "items": [
+    { "id": "st1", "name": "Midjourney", "url": "https://www.midjourney.com", "group": "AI工具", "note": "文生图主力", "created": "2026-09-10T09:00:00+08:00" },
+    { "id": "st2", "name": "LiblibAI", "url": "https://www.liblib.art", "group": "AI工具", "note": "国内模型库", "created": "2026-09-12T09:00:00+08:00" },
+    { "id": "st3", "name": "Civitai", "url": "https://civitai.com", "group": "AI工具", "note": "LoRA 参考", "created": "2026-09-15T09:00:00+08:00" },
+    { "id": "st4", "name": "Pexels", "url": "https://www.pexels.com", "group": "素材网站", "note": "免费视频/图片", "created": "2026-09-11T09:00:00+08:00" },
+    { "id": "st5", "name": "Mixkit", "url": "https://mixkit.co", "group": "素材网站", "note": "转场素材", "created": "2026-09-14T09:00:00+08:00" },
+    { "id": "st6", "name": "新榜", "url": "https://www.newrank.cn", "group": "数据平台", "note": "公众号热文", "created": "2026-09-13T09:00:00+08:00" },
+    { "id": "st7", "name": "蝉妈妈", "url": "https://www.chanmama.com", "group": "数据平台", "note": "抖音数据", "created": "2026-09-13T09:05:00+08:00" },
+    { "id": "st8", "name": "运营研究社", "url": "https://www.yunyingyanjiushe.com", "group": "对标账号", "note": "运营方法论", "created": "2026-09-16T09:00:00+08:00" }
+  ]
+}
