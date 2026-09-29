@@ -447,6 +447,9 @@ const THEME_DEFS = [
   { id: 'comic-pulp', label: 'Comic Pulp', desc: 'Soft comic palette', swatches: ['#6b5fb5', '#c8c1f0', '#f2dc4d'], light: { bg: '#fbf7ea', surface: '#fffdf5', surface2: '#f4efff', text: '#241c3d', text2: '#473f67', text3: '#806f4b', primary: '#f2dc4d', primaryHover: '#f6cc5f', soft: '#eeeaff', onPrimary: '#241c3d' }, dark: { bg: '#18152d', surface: '#252040', surface2: '#211c3a', text: '#f2dc4d', text2: '#f6f0d1', text3: '#c8c1f0', primary: '#f2dc4d', primaryHover: '#f6cc5f', soft: '#f2dc4d29', onPrimary: '#241c3d' } },
   { id: 'midnight-pastel', label: 'Midnight Pastel', desc: 'Dark pastel palette', swatches: ['#000000', '#bbb2ce', '#e4b976'], light: { bg: '#f3f1ec', surface: '#ffffff', surface2: '#e5e6e1', text: '#453b60', text2: '#333333', text3: '#65451d', primary: '#65451d', primaryHover: '#453b60', soft: '#ebe7f3', onPrimary: '#ffffff' }, dark: { bg: '#000000', surface: '#121212', surface2: '#0b0b0b', text: '#bbb2ce', text2: '#ffffff', text3: '#e4b976', primary: '#bbb2ce', primaryHover: '#e4b976', soft: '#bbb2ce29', onPrimary: '#000000' } },
 ];
+const THEME_LINKS = {
+  'retro-blue': ['#2d6dc3', '#3884eb'], 'minimal-mono': ['#1a1a1a', '#f4f4f2'], 'forest-green': ['#2f6840', '#91c89d'], 'vellum-ink': ['#141413', '#faf9f5'], 'creator-yellow': ['#222222', '#ffdd00'], 'precision-orange': ['#020202', '#ff9a62'], 'comic-pulp': ['#6b5fb5', '#f2dc4d'], 'midnight-pastel': ['#453b60', '#bbb2ce'],
+};
 function themeById(id) { return THEME_DEFS.find((theme) => theme.id === id) || THEME_DEFS[0]; }
 function applyPalette(id) {
   const theme = themeById(id);
@@ -466,7 +469,7 @@ function applyPalette(id) {
   root.style.setProperty('--accent', p.primary);
   root.style.setProperty('--accent-strong', p.primaryHover);
   root.style.setProperty('--accent-soft', p.soft);
-  root.style.setProperty('--accent-text', p.primary);
+  root.style.setProperty('--accent-text', THEME_LINKS[theme.id]?.[mode === 'dark' ? 1 : 0] || p.text);
   root.style.setProperty('--on-accent', p.onPrimary);
   localStorage.setItem('wb_palette', theme.id);
 }
