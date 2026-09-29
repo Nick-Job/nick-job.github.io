@@ -147,10 +147,17 @@ svg.ic { width: 17px; height: 17px; flex: none; vertical-align: -3px; }
 .page-title .sub { color: var(--text-2); font-size: 13px; margin-top: 4px; }
 .head-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 
-.stat-row { display: flex; gap: 30px; flex-wrap: wrap; margin: 14px 2px 20px; }
-.stat .v { font-size: 24px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.1; letter-spacing: -.01em; }
-.stat .k { font-size: 12px; color: var(--text-2); margin-top: 3px; }
+.stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin: 4px 0 20px; }
+.stat {
+  background: var(--surface); border-radius: var(--r-card);
+  box-shadow: var(--shadow-card); padding: 18px 20px 16px;
+  transition: transform .14s ease, box-shadow .14s ease;
+}
+.stat:hover { transform: translateY(-2px); box-shadow: var(--shadow-hover); }
+.stat .v { font-size: 32px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.05; letter-spacing: -.02em; }
+.stat .k { font-size: 13px; color: var(--text-2); margin-top: 5px; font-weight: 500; }
 .stat.warn .v { color: var(--danger); }
+.stat.warn .k { color: var(--danger); }
 .stat.dim .v { color: var(--text-3); }
 
 /* ---------- tabs（文字胶囊，选中灰底加粗） ---------- */
