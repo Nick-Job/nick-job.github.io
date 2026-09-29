@@ -32,8 +32,7 @@
   --shadow-pop: 0 18px 60px rgba(15, 16, 18, .22);
   --r-card: 16px;
   --r-ctl: 12px;
-  --font: -apple-system, BlinkMacSystemFont, "SF Pro SC", "PingFang SC",
-          "HarmonyOS Sans SC", "Segoe UI", "Microsoft YaHei", "Source Han Sans SC", sans-serif;
+  --font: "Source Han Serif SC", "Noto Serif SC", "Songti SC", "STSong", "SimSun", serif;
 }
 
 [data-theme="dark"] {
