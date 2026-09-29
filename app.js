@@ -457,7 +457,7 @@ function viewTodo() {
     empty = emptyHTML('plus', '还没有任务', '点右上角「新增任务」，添加第一件事。');
   }
   return head('今日待办', `${new Date().getMonth() + 1}月${new Date().getDate()}日 ${WEEK[new Date().getDay()]}`, tabs) + `
-    <div class="stat-row">
+    <div class="stat-row todo-stats">
       <div class="stat"><div class="v num">${pending.length}</div><div class="k">未完成</div></div>
       <div class="stat"><div class="v num">${todayDue}</div><div class="k">今日到期</div></div>
       <div class="stat ${overdue ? 'warn' : 'dim'}"><div class="v num">${overdue}</div><div class="k">逾期</div></div>

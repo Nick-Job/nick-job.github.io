@@ -176,6 +176,14 @@ svg.ic { width: 17px; height: 17px; flex: none; vertical-align: -3px; }
 .stat.warn .v { color: var(--danger); }
 .stat.warn .k { color: var(--danger); }
 .stat.dim .v { color: var(--text-3); }
+.todo-stats { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin: 6px 0 22px; }
+.todo-stats .stat {
+  min-height: 132px; padding: 22px 20px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center;
+}
+.todo-stats .stat .v { font-size: 38px; line-height: 1; }
+.todo-stats .stat .k { font-size: 14px; margin-top: 8px; }
 
 /* ---------- tabs（文字胶囊，选中灰底加粗） ---------- */
 .tabs { display: inline-flex; gap: 4px; flex-wrap: wrap; }
@@ -602,6 +610,9 @@ td.num-cell { font-variant-numeric: tabular-nums; }
   .mobile-bar .mb-title { font-weight: 800; font-size: 16px; }
   .view { padding: 16px 16px 48px; }
   .stat-row { gap: 20px; margin: 10px 2px 14px; }
+  .todo-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 8px 0 16px; }
+  .todo-stats .stat { min-height: 112px; padding: 18px 10px; }
+  .todo-stats .stat .v { font-size: 34px; }
   .form-grid { grid-template-columns: 1fr; }
   .kanban { grid-auto-columns: 244px; }
   .head-actions { width: 100%; }
