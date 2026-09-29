@@ -1,28 +1,15 @@
 /* ============================================================
    个人工作台 app.js
-   零依赖单页应用。数据存于仓库 data/*.json：
-   读取 = 相对路径 fetch；写入 = GitHub Contents API（令牌存本机 localStorage）。
+   零依赖单页应用。方案 B：云端数据存于 Cloudflare Worker + D1，
+   浏览器只在 localStorage 保存登录令牌、离线缓存和待同步队列。
    ============================================================ */
 'use strict';
-
-/* ---------- 访问锁（密码门） ---------- */
-/* 密码哈希存放在本文件里：改密码 = 把 sha256(新密码) 填到 hash 里（或让助手改）。
-   注意：这是静态站点的"门帘"，防止随手打开的人；懂技术的人绕过页面仍可直读数据文件。 */
-const ACCESS = {
-  enabled: true,
-  hash: '658243f3ccf5bb9f27c0258dabd8deb3490f3c0cb6671a192b4969114cdc6d4f', // 默认密码 nickwork2026
-};
-async function sha256Hex(str) {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
-  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
-}
 
 /* ---------- 小工具 ---------- */
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-const b64 = (str) => { const b = new TextEncoder().encode(str); let s = ''; b.forEach((x) => s += String.fromCharCode(x)); return btoa(s); };
 const debounceStore = {};
 
 function todayISO() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
@@ -82,13 +69,18 @@ const ICONS = {
 const ic = (n, cls = 'ic') => `<svg class="${cls}" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[n] || ''}</svg>`;
 
 /* ---------- 全局状态 ---------- */
-const DB_FILES = ['tasks', 'topics', 'prompts', 'sites', 'ideas', 'gallery'];
+const API_KEYS = ['tasks', 'topics', 'prompts', 'sites', 'ideas'];
+const DEFAULT_API_BASE = 'https://nickwork-api.nickjob1204.workers.dev';
 const state = {
-  db: {}, shas: {}, loaded: false, offline: false,
+  db: {}, loaded: false, offline: false,
   sync: 'init', lastErr: '',
-  token: localStorage.getItem('wb_token') || '',
+  apiBase: localStorage.getItem('wb_api_base') || DEFAULT_API_BASE,
+  apiToken: sessionStorage.getItem('wb_api_token') || '',
   feishuUrl: localStorage.getItem('wb_feishu_url') || '',
-  dirty: new Set(JSON.parse(localStorage.getItem('wb_dirty') || '[]')),
+  dirty: new Set((() => {
+    try { return JSON.parse(localStorage.getItem('wb_dirty') || '[]').filter((k) => API_KEYS.includes(k)); }
+    catch (e) { return []; }
+  })()),
   route: { mod: 'todo', view: 'focus' },
   promptFilter: 'all', promptSearch: '',
   siteFilter: 'all',
@@ -106,72 +98,167 @@ function repoCfg() {
   return { owner: 'Nick-Job', repo: 'nick-job.github.io' };
 }
 
-/* ---------- GitHub 同步 ---------- */
-async function gh(path, opts = {}) {
-  const headers = { 'Accept': 'application/vnd.github+json' };
-  if (state.token) headers.Authorization = 'Bearer ' + state.token;
-  const res = await fetch('https://api.github.com' + path, { ...opts, headers });
-  if (!res.ok) { const e = new Error('GitHub API ' + res.status); e.status = res.status; e.body = await res.text().catch(() => ''); throw e; }
+/* ---------- Cloudflare Worker + D1 同步 ---------- */
+function normalizeApiBase(value) { return String(value || '').trim().replace(/\/+$/, ''); }
+function apiUrl(path) { return normalizeApiBase(state.apiBase) + path; }
+function setApiSession(base, token) {
+  state.apiBase = normalizeApiBase(base);
+  state.apiToken = token || '';
+  state.apiBase ? localStorage.setItem('wb_api_base', state.apiBase) : localStorage.removeItem('wb_api_base');
+  state.apiToken ? sessionStorage.setItem('wb_api_token', state.apiToken) : sessionStorage.removeItem('wb_api_token');
+  localStorage.removeItem('wb_api_token');
+}
+function clearApiToken() {
+  state.apiToken = '';
+  sessionStorage.removeItem('wb_api_token');
+  localStorage.removeItem('wb_api_token');
+}
+async function apiFetch(path, opts = {}) {
+  if (!state.apiBase) throw new Error('还没有配置数据服务地址');
+  const headers = { ...(opts.headers || {}) };
+  if (opts.body && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
+  if (state.apiToken) headers.Authorization = 'Bearer ' + state.apiToken;
+  let res;
+  try {
+    res = await fetch(apiUrl(path), { ...opts, headers, cache: 'no-store' });
+  } catch (e) {
+    throw new Error('连不上数据服务，请检查 Worker 地址和网络');
+  }
+  const text = await res.text();
+  let payload = null;
+  try { payload = text ? JSON.parse(text) : null; } catch (e) {}
+  if (!res.ok) {
+    const err = new Error((payload && payload.error) || `数据服务请求失败（${res.status}）`);
+    err.status = res.status;
+    if (res.status === 401) clearApiToken();
+    throw err;
+  }
+  return payload;
+}
+function defaultData(name) {
+  if (name === 'topics') return { statuses: ['待评估', '已立项', '制作中', '待发布', '已发布', '已复盘'], signals: [], items: [] };
+  if (name === 'gallery') return { folders: [] };
+  if (name === 'sites') return { groups: [], items: [] };
+  return { items: [] };
+}
+async function fetchStaticData(name) {
+  const path = name === 'gallery' ? 'gallery/index.json' : `data/${name}.json`;
+  const res = await fetch(`${path}?t=${Date.now()}`, { cache: 'no-store' });
+  if (!res.ok) throw new Error(`${path} 读取失败（${res.status}）`);
   return res.json();
 }
-function saveDirty() { localStorage.setItem('wb_dirty', JSON.stringify([...state.dirty])); }
-async function loadFile(name) {
-  const path = name === 'gallery' ? 'gallery/index.json' : `data/${name}.json`;
+function cachedData(name) {
+  const raw = localStorage.getItem('wb_cache_' + name);
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch (e) { return null; }
+}
+function applyRemoteData(name, remote) {
+  const local = state.dirty.has(name) ? cachedData(name) : null;
+  state.db[name] = local || remote || defaultData(name);
+  if (!state.dirty.has(name)) localStorage.setItem('wb_cache_' + name, JSON.stringify(state.db[name]));
+}
+async function loadLocalData(name) {
+  const cached = cachedData(name);
+  if (cached) { state.db[name] = cached; return true; }
   try {
-    const res = await fetch(`${path}?t=${Date.now()}`, { cache: 'no-store' });
-    if (!res.ok) throw new Error('http ' + res.status);
-    state.db[name] = await res.json();
+    state.db[name] = await fetchStaticData(name);
     localStorage.setItem('wb_cache_' + name, JSON.stringify(state.db[name]));
     return true;
   } catch (e) {
-    const c = localStorage.getItem('wb_cache_' + name);
-    if (c) { try { state.db[name] = JSON.parse(c); return false; } catch (e2) {} }
-    state.db[name] = name === 'topics' ? { statuses: ['待评估', '已立项', '制作中', '待发布', '已发布', '已复盘'], signals: [], items: [] } : name === 'gallery' ? { folders: [] } : { items: [] };
+    state.db[name] = defaultData(name);
     return false;
   }
 }
+async function seedRemoteMissing(remote) {
+  const current = remote || {};
+  const missing = API_KEYS.filter((name) => current[name] === undefined);
+  if (!missing.length) return current;
+  const seed = {};
+  for (const name of missing) {
+    const local = state.dirty.has(name) ? cachedData(name) : null;
+    seed[name] = local || await fetchStaticData(name);
+  }
+  await apiFetch('/import', { method: 'POST', body: JSON.stringify({ data: seed }) });
+  for (const name of missing) state.dirty.delete(name);
+  saveDirty();
+  toast(`已把 ${missing.length} 个数据集导入云端`);
+  return { ...current, ...seed };
+}
+function saveDirty() { localStorage.setItem('wb_dirty', JSON.stringify([...state.dirty])); }
+const saveTimers = {};
+const savingNames = new Set();
 async function loadAll() {
   state.sync = 'busy'; updateSyncUI();
-  const rs = await Promise.all(DB_FILES.map(loadFile));
-  state.offline = rs.some((r) => !r);
-  state.shas = {};
+  let remote = null;
+  let remoteOk = false;
+  if (state.apiBase && state.apiToken) {
+    try {
+      const payload = await apiFetch('/data');
+      remote = await seedRemoteMissing(payload && payload.data ? payload.data : {});
+      remoteOk = true;
+      state.lastErr = '';
+    } catch (e) {
+      state.lastErr = e.message;
+      if (e.status === 401) queueMicrotask(() => showGate('登录已过期，请重新输入密码'));
+    }
+  }
+  for (const name of API_KEYS) {
+    if (remoteOk && remote[name] !== undefined) applyRemoteData(name, remote[name]);
+    else await loadLocalData(name);
+  }
+  let galleryOk = false;
+  try {
+    const gallery = await fetchStaticData('gallery');
+    state.db.gallery = gallery;
+    localStorage.setItem('wb_cache_gallery', JSON.stringify(gallery));
+    galleryOk = true;
+  } catch (e) { galleryOk = await loadLocalData('gallery'); }
+  state.offline = !remoteOk || !galleryOk;
   state.loaded = true;
-  state.sync = state.token ? (state.dirty.size ? 'pending' : 'ok') : 'local';
+  state.sync = !state.apiToken ? 'local' : state.offline ? 'err' : (state.dirty.size ? 'pending' : 'ok');
   updateSyncUI();
+  if (state.apiToken && state.dirty.size) {
+    [...state.dirty].forEach((name) => queueSave(name, 0));
+  }
 }
 function scheduleSave(name) {
   localStorage.setItem('wb_cache_' + name, JSON.stringify(state.db[name]));
   state.dirty.add(name); saveDirty();
-  state.sync = state.token ? 'pending' : 'local';
+  state.sync = state.apiToken ? 'pending' : 'local';
   updateSyncUI();
+  queueSave(name, 450);
 }
-async function pushFile(name, isRetry = false) {
+function queueSave(name, delay = 450) {
+  if (!state.apiToken || !API_KEYS.includes(name)) return;
+  clearTimeout(saveTimers[name]);
+  saveTimers[name] = setTimeout(() => pushFile(name), delay);
+}
+async function pushFile(name, options = {}) {
+  if (!state.apiToken) return false;
+  if (savingNames.has(name)) {
+    state.dirty.add(name); saveDirty();
+    queueSave(name, 700);
+    return true;
+  }
+  savingNames.add(name);
   state.sync = 'busy'; updateSyncUI();
-  const cfg = repoCfg();
+  const snapshot = JSON.stringify(state.db[name]);
   try {
-    let sha = state.shas[name];
-    if (sha === undefined) {
-      try { const j = await gh(`/repos/${cfg.owner}/${cfg.repo}/contents/data/${name}.json?ref=main`); sha = j.sha; }
-      catch (e) { if (e.status !== 404) throw e; sha = null; }
-    }
-    const body = {
-      message: '工作台: 更新 ' + name + '.json',
-      content: b64(JSON.stringify(state.db[name], null, 2) + '\n'),
-      branch: 'main',
-    };
-    if (sha) body.sha = sha;
-    const j = await gh(`/repos/${cfg.owner}/${cfg.repo}/contents/data/${name}.json`, { method: 'PUT', body: JSON.stringify(body) });
-    state.shas[name] = j.content.sha;
+    await apiFetch('/data/' + name, { method: 'PUT', body: snapshot });
+    if (JSON.stringify(state.db[name]) === snapshot) state.dirty.delete(name);
+    else { state.dirty.add(name); queueSave(name, 250); }
+    saveDirty();
     state.sync = state.dirty.size ? 'pending' : 'ok'; state.lastErr = '';
-    state.dirty.delete(name); saveDirty();
     updateSyncUI();
     return true;
   } catch (e) {
-    if ((e.status === 409 || e.status === 422) && !isRetry) { state.shas[name] = undefined; return pushFile(name, true); }
     state.sync = 'err'; state.lastErr = e.message;
-    toast('同步失败：' + e.message, 'err');
+    toast((options.manual ? '保存失败：' : '自动保存失败：') + e.message, 'err');
     updateSyncUI();
+    if (e.status === 401) queueMicrotask(() => showGate('登录已过期，请重新输入密码'));
     return false;
+  } finally {
+    savingNames.delete(name);
   }
 }
 
@@ -248,17 +335,19 @@ function loadModOrder() {
 state.modOrder = loadModOrder();
 state.route = routeFor(state.modOrder[0]);
 function syncInfo() {
-  const cfg = repoCfg();
+  let host = '';
+  try { host = state.apiBase ? new URL(state.apiBase).host : '未配置数据服务'; }
+  catch (e) { host = state.apiBase || '未配置数据服务'; }
   const map = {
-    ok: ['ok', '已同步', cfg.repo],
-    pending: ['pending', '有改动未同步', '点左侧「同步」上传'],
-    busy: ['busy', '同步中', cfg.repo],
-    err: ['err', '同步失败', state.lastErr || '请检查令牌'],
-    local: ['local', '本地模式', '未配置令牌，改动未上传'],
-    init: ['busy', '加载中', cfg.repo],
+    ok: ['ok', '已保存', host],
+    pending: ['pending', '等待自动保存', host],
+    busy: ['busy', '正在保存', host],
+    err: ['err', '保存失败', state.lastErr || '请检查 Worker 配置'],
+    local: ['local', '未登录', '请连接数据服务'],
+    init: ['busy', '加载中', host],
   };
   const [cls, label, sub] = map[state.sync] || map.init;
-  return `<button class="sync-pill ${cls}" data-act="syncReload" title="点击拉取仓库最新数据">
+  return `<button class="sync-pill ${cls}" data-act="syncReload" title="点击从云端拉取最新数据">
     <span class="dot"></span><span><b>${label}</b><br>${esc(sub)}</span></button>`;
 }
 function renderSidebar() {
@@ -933,17 +1022,17 @@ const ACTIONS = {
   scrim: (id, el, e) => { if (e.target === el) closeModal(); },
   openSettings: () => settingsModal(),
   syncNow: async (id, el) => {
-    if (!state.token) { toast('先在设置里配置 GitHub 令牌，才能同步上传', 'err'); settingsModal(); return; }
+    if (!state.apiBase || !state.apiToken) { toast('请先登录数据服务', 'err'); showGate(); return; }
     if (el) el.disabled = true;
     const dirty = [...state.dirty];
-    if (!dirty.length) { toast('没有需要同步的改动'); if (el) el.disabled = false; return; }
+    if (!dirty.length) { toast('所有改动都已自动保存'); if (el) el.disabled = false; return; }
     let ok = true;
-    for (const name of dirty) { const r = await pushFile(name); if (!r) ok = false; }
+    for (const name of dirty) { const r = await pushFile(name, { manual: true }); if (!r) ok = false; }
     if (el) el.disabled = false;
-    if (!ok) { toast('部分文件上传失败，稍后再点同步重试', 'err'); return; }
+    if (!ok) { toast('部分数据保存失败，稍后会继续自动重试', 'err'); return; }
     state.sync = 'ok';
     renderSidebar();
-    toast(`已把 ${dirty.length} 个文件的改动同步到 GitHub 仓库`);
+    toast(`已保存 ${dirty.length} 个数据集`);
   },
   syncReload: async () => { await loadAll(); renderAll(); toast(state.offline ? '已加载本机缓存' : '数据已刷新'); },
   /* 待办 */
@@ -1063,39 +1152,48 @@ function settingsModal() {
   openModal({
     title: '设置',
     body: `<form id="settings-form"><div class="form-grid">
-      <div class="field full"><label>GitHub 令牌（Token）</label>
-        <input class="input" name="token" type="password" value="${esc(state.token)}" placeholder="ghp_ 或 github_pat_ 开头" autocomplete="off">
-        <span class="hint">仅保存在本机浏览器 localStorage，用于在页面上直接增删改并提交到仓库。建议使用只授予本仓库 Contents 读写权限的 fine-grained token，不放进任何代码。</span></div>
+      <div class="field full"><label>数据服务地址（Cloudflare Worker）</label>
+        <input class="input" name="api" value="${esc(state.apiBase)}" placeholder="https://nickwork-api.你的子域.workers.dev">
+        <span class="hint">数据保存在 D1；浏览器只保存登录令牌和离线缓存。更换地址后需要重新输入访问密码。</span></div>
       <div class="field"><label>仓库 Owner</label><input class="input" name="owner" value="${esc(cfg.owner)}"></div>
       <div class="field"><label>仓库名</label><input class="input" name="repo" value="${esc(cfg.repo)}"></div>
       <div class="field full"><label>飞书同步地址（Cloudflare Worker）</label>
         <input class="input" name="feishu" value="${esc(state.feishuUrl)}" placeholder="https://你的-worker.workers.dev">
         <span class="hint">填好 Worker 后，选题中枢会出现「从飞书同步」按钮。Worker 部署方法见仓库 worker/ 目录的说明。</span></div>
+      <div class="field full"><span class="hint">当前登录：${state.apiToken ? '当前标签页已登录，关闭标签页后需重新输入密码' : '未登录'}</span></div>
     </div></form>`,
-    foot: `<button class="btn danger-ghost" id="st-clear" style="margin-right:auto">清除令牌</button>
+    foot: `<button class="btn danger-ghost" id="st-clear" style="margin-right:auto">退出登录</button>
       <button class="btn ghost" id="st-test">测试连接</button>
       <button class="btn primary" type="submit" form="settings-form">保存</button>`,
   });
   $('#settings-form').addEventListener('submit', (e) => {
     e.preventDefault();
     const f = Object.fromEntries(new FormData(e.target).entries());
-    state.token = f.token.trim();
-    state.token ? localStorage.setItem('wb_token', state.token) : localStorage.removeItem('wb_token');
+    const nextBase = normalizeApiBase(f.api);
+    const changed = nextBase !== normalizeApiBase(state.apiBase);
+    setApiSession(nextBase, changed ? '' : state.apiToken);
     state.feishuUrl = (f.feishu || '').trim();
     state.feishuUrl ? localStorage.setItem('wb_feishu_url', state.feishuUrl) : localStorage.removeItem('wb_feishu_url');
     localStorage.setItem('wb_repo', JSON.stringify({ owner: f.owner.trim(), repo: f.repo.trim() }));
-    state.shas = {}; closeModal(); renderAll(); toast('设置已保存');
+    closeModal(); renderAll();
+    if (!nextBase || changed) { showGate('数据服务地址已更新，请重新登录'); return; }
+    toast('设置已保存');
   });
   $('#st-test').addEventListener('click', async () => {
     const f = Object.fromEntries(new FormData($('#settings-form')).entries());
+    const base = normalizeApiBase(f.api);
+    if (!base) { toast('先填写数据服务地址', 'err'); return; }
+    if (base !== normalizeApiBase(state.apiBase)) { toast('先保存新地址并重新登录，再测试', 'err'); return; }
+    if (!state.apiToken) { toast('当前未登录，不能读取云端数据', 'err'); return; }
     try {
-      const j = await gh(`/repos/${f.owner.trim()}/${f.repo.trim()}`);
-      toast(`连接成功：${j.full_name}（${j.private ? '私有' : '公开'}）`);
-    } catch (e) { toast('连接失败：' + e.status + ' ' + e.message, 'err'); }
+      const j = await apiFetch('/data');
+      const count = Object.keys((j && j.data) || {}).length;
+      toast(`连接成功：云端有 ${count} 个数据集`);
+    } catch (e) { toast('连接失败：' + e.message, 'err'); }
   });
   $('#st-clear').addEventListener('click', () => {
-    state.token = ''; localStorage.removeItem('wb_token');
-    state.sync = 'local'; closeModal(); renderAll(); toast('已清除本机令牌');
+    clearApiToken();
+    state.sync = 'local'; closeModal(); renderAll(); showGate('已退出登录');
   });
 }
 
@@ -1195,41 +1293,68 @@ async function start() {
   renderAll();
 }
 (async function boot() {
-  if (!ACCESS.enabled) return start();
-  if (localStorage.getItem('wb_gate') === ACCESS.hash) return start();
+  localStorage.removeItem('wb_token');
+  localStorage.removeItem('wb_api_token');
+  if (state.apiBase && state.apiToken) return start();
   showGate();
 })();
-function showGate() {
+function showGate(message = '') {
+  const old = $('#gate-root');
+  if (old) old.remove();
   const root = document.createElement('div');
   root.id = 'gate-root';
   root.innerHTML = `<div class="gate">
     <form class="gate-card" id="gate-form">
       <div class="gate-mark">工</div>
       <div class="gate-title">NickWork</div>
-      <div class="gate-sub">私有工作台 · 请输入访问密码</div>
-      <input class="input" id="gate-pass" type="password" placeholder="访问密码" autocomplete="current-password" autofocus>
+      <div class="gate-sub">${esc(message || '私有工作台 · 连接云端数据')}</div>
+      <input class="input" id="gate-api" type="url" value="${esc(state.apiBase)}" placeholder="数据服务地址 https://xxx.workers.dev" autocomplete="url">
+      <input class="input" id="gate-pass" type="password" placeholder="访问密码" autocomplete="current-password">
       <button class="btn primary" type="submit" style="width:100%;justify-content:center">进入</button>
       <div class="gate-err" id="gate-err"></div>
     </form>
   </div>`;
   document.body.appendChild(root);
-  $('#gate-pass').focus();
+  ($('#gate-api').value ? $('#gate-pass') : $('#gate-api')).focus();
   $('#gate-form').addEventListener('submit', async (e) => {
     e.preventDefault();
+    const base = normalizeApiBase($('#gate-api').value);
     const pass = $('#gate-pass').value;
-    const h = await sha256Hex(pass);
-    if (h === ACCESS.hash) {
-      localStorage.setItem('wb_gate', ACCESS.hash);
+    const button = $('#gate-form button[type="submit"]');
+    if (!base || !pass) {
+      $('#gate-err').textContent = '请填写数据服务地址和访问密码';
+      return;
+    }
+    button.disabled = true;
+    $('#gate-err').textContent = '连接中…';
+    try {
+      const res = await fetch(base + '/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pass }),
+        cache: 'no-store',
+      });
+      const text = await res.text();
+      let payload = null;
+      try { payload = text ? JSON.parse(text) : null; } catch (err) {}
+      if (!res.ok || !payload || !payload.token) {
+        const err = new Error((payload && payload.error) || (res.status === 401 ? '密码不对，再试试' : `服务请求失败（${res.status}）`));
+        err.status = res.status;
+        throw err;
+      }
+      setApiSession(base, payload.token);
       root.remove();
       start();
-    } else {
-      $('#gate-err').textContent = '密码不对，再试试';
+    } catch (err) {
+      $('#gate-err').textContent = err.status === 401 ? '密码不对，再试试' : ('连接失败：' + err.message);
       $('#gate-pass').value = '';
       $('#gate-pass').focus();
       const card = root.querySelector('.gate-card');
       card.classList.remove('shake');
       void card.offsetWidth;
       card.classList.add('shake');
+    } finally {
+      button.disabled = false;
     }
   });
 }
