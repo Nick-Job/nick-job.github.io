@@ -145,6 +145,7 @@ svg.ic { width: 17px; height: 17px; flex: none; vertical-align: -3px; }
 .sync-pill b { color: var(--text); font-weight: 600; display: block; }
 .sync-pill .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--text-3); }
 .sync-pill.ok .dot { background: var(--ok); }
+.sync-pill.pending .dot { background: var(--warn); }
 .sync-pill.busy .dot { background: var(--warn); }
 .sync-pill.err .dot { background: var(--danger); }
 .sync-pill.local .dot { background: var(--text-3); }

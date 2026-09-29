@@ -136,15 +136,14 @@ async function loadAll() {
   state.offline = rs.some((r) => !r);
   state.shas = {};
   state.loaded = true;
-  state.sync = state.token ? 'ok' : 'local';
+  state.sync = state.token ? (state.dirty.size ? 'pending' : 'ok') : 'local';
   updateSyncUI();
 }
 function scheduleSave(name) {
   localStorage.setItem('wb_cache_' + name, JSON.stringify(state.db[name]));
   state.dirty.add(name); saveDirty();
-  if (!state.token) { state.sync = 'local'; updateSyncUI(); return; }
-  clearTimeout(debounceStore[name]);
-  debounceStore[name] = setTimeout(() => pushFile(name), 900);
+  state.sync = state.token ? 'pending' : 'local';
+  updateSyncUI();
 }
 async function pushFile(name, isRetry = false) {
   state.sync = 'busy'; updateSyncUI();
@@ -163,7 +162,7 @@ async function pushFile(name, isRetry = false) {
     if (sha) body.sha = sha;
     const j = await gh(`/repos/${cfg.owner}/${cfg.repo}/contents/data/${name}.json`, { method: 'PUT', body: JSON.stringify(body) });
     state.shas[name] = j.content.sha;
-    state.sync = 'ok'; state.lastErr = '';
+    state.sync = state.dirty.size ? 'pending' : 'ok'; state.lastErr = '';
     state.dirty.delete(name); saveDirty();
     updateSyncUI();
     return true;
@@ -252,13 +251,14 @@ function syncInfo() {
   const cfg = repoCfg();
   const map = {
     ok: ['ok', '已同步', cfg.repo],
+    pending: ['pending', '有改动未同步', '点左侧「同步」上传'],
     busy: ['busy', '同步中', cfg.repo],
     err: ['err', '同步失败', state.lastErr || '请检查令牌'],
     local: ['local', '本地模式', '未配置令牌，改动未上传'],
     init: ['busy', '加载中', cfg.repo],
   };
   const [cls, label, sub] = map[state.sync] || map.init;
-  return `<button class="sync-pill ${cls}" data-act="syncReload" title="点击重新拉取数据">
+  return `<button class="sync-pill ${cls}" data-act="syncReload" title="点击拉取仓库最新数据">
     <span class="dot"></span><span><b>${label}</b><br>${esc(sub)}</span></button>`;
 }
 function renderSidebar() {
@@ -935,17 +935,15 @@ const ACTIONS = {
   syncNow: async (id, el) => {
     if (!state.token) { toast('先在设置里配置 GitHub 令牌，才能同步上传', 'err'); settingsModal(); return; }
     if (el) el.disabled = true;
-    try {
-      const dirty = [...state.dirty];
-      let ok = true;
-      for (const name of dirty) { const r = await pushFile(name); if (!r) ok = false; }
-      if (!ok) { toast('部分文件上传失败，稍后再试', 'err'); return; }
-      await loadAll();
-      renderAll();
-      toast(dirty.length ? `同步完成：上传 ${dirty.length} 个文件，并已拉取最新` : '已拉取最新数据');
-    } finally {
-      if (el) el.disabled = false;
-    }
+    const dirty = [...state.dirty];
+    if (!dirty.length) { toast('没有需要同步的改动'); if (el) el.disabled = false; return; }
+    let ok = true;
+    for (const name of dirty) { const r = await pushFile(name); if (!r) ok = false; }
+    if (el) el.disabled = false;
+    if (!ok) { toast('部分文件上传失败，稍后再点同步重试', 'err'); return; }
+    state.sync = 'ok';
+    renderSidebar();
+    toast(`已把 ${dirty.length} 个文件的改动同步到 GitHub 仓库`);
   },
   syncReload: async () => { await loadAll(); renderAll(); toast(state.offline ? '已加载本机缓存' : '数据已刷新'); },
   /* 待办 */
