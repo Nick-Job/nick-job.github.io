@@ -63,20 +63,25 @@ const ICONS = {
   clock: '<circle cx="10" cy="10" r="6.5"/><polyline points="10 6.3 10 10 12.6 11.4"/>',
   alert: '<circle cx="10" cy="10" r="6.5"/><line x1="10" y1="6.6" x2="10" y2="10.6"/><circle cx="10" cy="13.4" r=".4" fill="currentColor"/>',
   globe: '<circle cx="10" cy="10" r="6.5"/><path d="M3.5 10h13"/><path d="M10 3.5c2 1.9 3 4 3 6.5s-1 4.6-3 6.5c-2-1.9-3-4-3-6.5s1-4.6 3-6.5z"/>',
+  eye: '<path d="M3.2 10c1.9-3.1 4.1-4.6 6.8-4.6s4.9 1.5 6.8 4.6c-1.9 3.1-4.1 4.6-6.8 4.6S5.1 13.1 3.2 10z"/><circle cx="10" cy="10" r="2.3"/>',
+  eyeOff: '<path d="M3.2 10c1.9-3.1 4.1-4.6 6.8-4.6 1.2 0 2.3.3 3.4.8M16.8 10c-.7 1.2-1.5 2.2-2.4 3M12.9 14.2c-.9.3-1.9.4-2.9.4-2.7 0-4.9-1.5-6.8-4.6.5-.8 1-1.5 1.6-2.1"/><line x1="4.2" y1="16" x2="15.8" y2="4.4"/>',
+  image: '<rect x="3" y="4.5" width="14" height="11" rx="2"/><circle cx="7.2" cy="8.3" r="1.3"/><path d="M3.5 13.6l3.4-3 3 2.6 3.6-3.6 3 2.6"/>',
 };
 const ic = (n, cls = 'ic') => `<svg class="${cls}" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[n] || ''}</svg>`;
 
 /* ---------- 全局状态 ---------- */
-const DB_FILES = ['tasks', 'topics', 'prompts', 'sites', 'ideas'];
+const DB_FILES = ['tasks', 'topics', 'prompts', 'sites', 'ideas', 'gallery'];
 const state = {
   db: {}, shas: {}, loaded: false, offline: false,
   sync: 'init', lastErr: '',
   token: localStorage.getItem('wb_token') || '',
+  feishuUrl: localStorage.getItem('wb_feishu_url') || '',
   route: { mod: 'todo', view: 'focus' },
   promptFilter: 'all', promptSearch: '',
   siteFilter: 'all',
   ideaFilter: 'open',
   cal: (() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() }; })(),
+  showHidden: false,
 };
 function repoCfg() {
   const h = location.hostname;
@@ -97,8 +102,9 @@ async function gh(path, opts = {}) {
   return res.json();
 }
 async function loadFile(name) {
+  const path = name === 'gallery' ? 'gallery/index.json' : `data/${name}.json`;
   try {
-    const res = await fetch(`data/${name}.json?t=${Date.now()}`, { cache: 'no-store' });
+    const res = await fetch(`${path}?t=${Date.now()}`, { cache: 'no-store' });
     if (!res.ok) throw new Error('http ' + res.status);
     state.db[name] = await res.json();
     localStorage.setItem('wb_cache_' + name, JSON.stringify(state.db[name]));
@@ -106,7 +112,7 @@ async function loadFile(name) {
   } catch (e) {
     const c = localStorage.getItem('wb_cache_' + name);
     if (c) { try { state.db[name] = JSON.parse(c); return false; } catch (e2) {} }
-    state.db[name] = name === 'topics' ? { statuses: ['待评估', '已立项', '制作中', '待发布', '已发布', '已复盘'], signals: [], items: [] } : { items: [] };
+    state.db[name] = name === 'topics' ? { statuses: ['待评估', '已立项', '制作中', '待发布', '已发布', '已复盘'], signals: [], items: [] } : name === 'gallery' ? { folders: [] } : { items: [] };
     return false;
   }
 }
@@ -160,9 +166,9 @@ function toast(msg, kind = 'ok') {
   setTimeout(() => { t.style.opacity = '0'; t.style.transition = 'opacity .25s'; }, 2000);
   setTimeout(() => t.remove(), 2300);
 }
-function openModal({ title, body, foot, onMount }) {
+function openModal({ title, body, foot, onMount, wide }) {
   const root = $('#modal-root');
-  root.innerHTML = `<div class="modal-scrim" data-act="scrim"><div class="modal" role="dialog" aria-modal="true">
+  root.innerHTML = `<div class="modal-scrim" data-act="scrim"><div class="modal ${wide ? 'wide' : ''}" role="dialog" aria-modal="true">
     <div class="modal-head"><h3>${esc(title)}</h3><button class="icon-btn" data-act="closeModal" aria-label="关闭">${ic('x')}</button></div>
     <div class="modal-body">${body}</div>
     ${foot ? `<div class="modal-foot">${foot}</div>` : ''}
@@ -197,15 +203,32 @@ function navCounts() {
     prompts: (d.prompts?.items || []).length,
     sites: (d.sites?.items || []).length,
     ideas: (d.ideas?.items || []).filter((i) => !i.processed).length,
+    calendar: (d.topics?.items || []).filter((t) => t.eta && t.eta >= todayISO()).length,
+    gallery: (d.gallery?.folders || []).reduce((n, f) => n + f.images.length, 0),
   };
 }
 const MODULES = [
   { mod: 'todo', icon: 'listCheck', label: '今日待办' },
+  { mod: 'ideas', icon: 'bulb', label: '灵感速记' },
   { mod: 'topics', icon: 'board', label: '选题中枢' },
+  { mod: 'calendar', icon: 'calendar', label: '日历排期' },
   { mod: 'prompts', icon: 'sparkle', label: '提示词库' },
   { mod: 'sites', icon: 'globe', label: '网站收藏夹' },
-  { mod: 'ideas', icon: 'bulb', label: '灵感速记' },
+  { mod: 'gallery', icon: 'image', label: '图库' },
 ];
+const DEFAULT_ORDER = ['todo', 'ideas', 'topics', 'calendar', 'prompts', 'sites', 'gallery'];
+function routeFor(mod) {
+  return { mod, view: mod === 'todo' ? 'focus' : mod === 'topics' ? 'board' : mod === 'prompts' ? 'all' : 'main' };
+}
+function loadModOrder() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('wb_mod_order') || '[]');
+    if (Array.isArray(saved) && saved.length === MODULES.length && saved.every((m) => MODULES.some((x) => x.mod === m))) return saved;
+  } catch (e) {}
+  return DEFAULT_ORDER.slice();
+}
+state.modOrder = loadModOrder();
+state.route = routeFor(state.modOrder[0]);
 function syncInfo() {
   const cfg = repoCfg();
   const map = {
@@ -221,15 +244,17 @@ function syncInfo() {
 }
 function renderSidebar() {
   const c = navCounts();
-  const items = MODULES.map((m) => `
-    <button class="nav-item ${state.route.mod === m.mod ? 'active' : ''}" data-act="nav" data-mod="${m.mod}">
+  const items = state.modOrder.map((mod) => {
+    const m = MODULES.find((x) => x.mod === mod);
+    return `<button class="nav-item ${state.route.mod === m.mod ? 'active' : ''}" draggable="true" data-act="nav" data-mod="${m.mod}" title="拖动可调换顺序">
       ${ic(m.icon)}<span>${m.label}</span>
       <span class="nv-count num">${c[m.mod]}</span>
-    </button>`).join('');
+    </button>`;
+  }).join('');
   const themeIcon = document.documentElement.dataset.theme === 'dark' ? 'sun' : 'moon';
   $('#sidebar').innerHTML = `
     <div class="brand"><div class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4.5" width="16" height="3.2" rx="1.6"/><rect x="4" y="16.3" width="16" height="3.2" rx="1.6"/><rect x="10.4" y="4.5" width="3.2" height="15" rx="1.6"/></svg></div>
-      <div><div class="brand-name">个人工作台</div><div class="brand-sub">${esc(repoCfg().owner)} 的内容创作台</div></div>
+      <div class="brand-name">NickWork</div>
     </div>
     <nav class="nav"><div class="nav-label">模块</div>${items}</nav>
     <div class="side-foot">
@@ -261,7 +286,7 @@ function skelHTML(n = 4) { return `<div style="padding:16px 18px">${Array.from({
 function renderView() {
   const v = $('#view');
   if (!state.loaded) { v.innerHTML = head('加载中') + `<div class="panel section-gap">${skelHTML()}</div>`; return; }
-  const fns = { todo: viewTodo, topics: viewTopics, prompts: viewPrompts, sites: viewSites, ideas: viewIdeas };
+  const fns = { todo: viewTodo, topics: viewTopics, prompts: viewPrompts, sites: viewSites, ideas: viewIdeas, calendar: viewCalendar, gallery: viewGallery };
   v.innerHTML = `<div class="view-body">${(fns[state.route.mod] || viewTodo)()}</div>`;
   const bar = `<div class="mobile-bar"><button class="icon-btn" data-act="openSide" aria-label="菜单">${ic('menu')}</button>
     <span class="mb-title">${MODULES.find((m) => m.mod === state.route.mod)?.label || ''}</span></div>`;
@@ -282,7 +307,7 @@ function taskCard(t, today) {
       ${due ? `<span class="link-tag ${overdue ? 'overdue' : ''}">${ic('clock')}截止 ${fmtMD(due)}${overdue ? ' 已逾期' : ''}</span>` : ''}
     </div>
     <div class="tc-text">${esc(t.text)}</div>
-    <div class="tc-meta">${t.link ? `<span class="link-tag">关联：${LINK_NAME[t.link] || t.link}</span>` : ''}</div>
+    <div class="tc-meta">${t.link ? `<span class="link-tag">关联：${LINK_NAME[t.link] || t.link}</span>` : ''}${t.note ? `<span class="link-tag">备注：${esc(t.note)}</span>` : ''}</div>
     <div class="tc-foot">
       ${t.done ? '' : `<button class="btn sm ghost" data-act="taskToTopic" data-id="${t.id}">转选题</button>
       <button class="btn sm ghost" data-act="taskToPrompt" data-id="${t.id}">转提示词</button>`}
@@ -309,28 +334,19 @@ function viewTodo() {
   const todayDue = pending.filter((t) => t.due === today).length;
   const overdue = pending.filter((t) => t.due && t.due < today).length;
   const v = state.route.view;
-  const tabs = tabsHTML('todo', [['focus', '今日焦点'], ['all', '全部任务'], ['done', '已完成']], v);
-  let list, addForm = '', empty;
+  const tabs = tabsHTML('todo', [['focus', '今日焦点'], ['all', '全部任务'], ['done', '已完成']], v)
+    + ` <button class="btn primary" data-act="addTask">${ic('plus')}新增任务</button>`;
+  let list, empty;
   if (v === 'done') {
     list = done.sort((a, b) => (a.created < b.created ? 1 : -1));
     empty = emptyHTML('listCheck', '还没有已完成的任务', '完成任务后它会出现在这里，作为你的产出记录。');
   } else if (v === 'focus') {
     list = sortTasks(pending.filter((t) => t.due && t.due <= today));
     empty = emptyHTML('check', '今天没有到期任务', '到期或逾期的任务会自动进入今日焦点。');
-    addForm = 'x';
   } else {
     list = sortTasks(pending);
-    empty = emptyHTML('plus', '还没有任务', '用上面的输入框添加第一件事。');
-    addForm = 'x';
+    empty = emptyHTML('plus', '还没有任务', '点右上角「新增任务」，添加第一件事。');
   }
-  const quickAdd = addForm ? `
-    <form class="quick-add" id="task-add">
-      <input class="input grow" name="text" placeholder="要做什么？一句动作句最好" required>
-      <select class="select" name="priority"><option>高</option><option selected>中</option><option>低</option></select>
-      <input class="select" type="date" name="due" style="width:auto">
-      <select class="select" name="link"><option value="">关联模块</option><option value="topics">选题中枢</option><option value="prompts">提示词库</option><option value="sites">网站收藏夹</option></select>
-      <button class="btn primary" type="submit">${ic('plus')}新增任务</button>
-    </form>` : '';
   return head('今日待办', `${new Date().getMonth() + 1}月${new Date().getDate()}日 ${WEEK[new Date().getDay()]}`, tabs) + `
     <div class="stat-row">
       <div class="stat"><div class="v num">${pending.length}</div><div class="k">未完成</div></div>
@@ -338,9 +354,30 @@ function viewTodo() {
       <div class="stat ${overdue ? 'warn' : 'dim'}"><div class="v num">${overdue}</div><div class="k">逾期</div></div>
       <div class="stat dim"><div class="v num">${done.length}</div><div class="k">已完成</div></div>
     </div>
-    ${quickAdd ? `<div class="panel">${quickAdd}</div>` : ''}
-    ${list.length ? `<div class="task-grid" style="margin-top:14px">${list.map((t) => taskCard(t, today)).join('')}</div>`
-      : `<div class="panel" style="margin-top:14px">${empty}</div>`}`;
+    ${list.length ? `<div class="task-grid">${list.map((t) => taskCard(t, today)).join('')}</div>`
+      : `<div class="panel">${empty}</div>`}`;
+}
+function taskModal() {
+  openModal({
+    title: '新增任务',
+    body: `<form id="task-form"><div class="form-grid">
+      <div class="field full"><label>任务内容</label><textarea class="textarea" name="text" rows="2" placeholder="一句能直接开工的动作句" required></textarea></div>
+      <div class="field"><label>优先级</label><select class="select" name="priority" style="width:100%"><option>高</option><option selected>中</option><option>低</option></select></div>
+      <div class="field"><label>截止日（可选）</label><input class="input" type="date" name="due"></div>
+      <div class="field"><label>关联模块</label><select class="select" name="link" style="width:100%"><option value="">不关联</option><option value="topics">选题中枢</option><option value="prompts">提示词库</option><option value="sites">网站收藏夹</option></select></div>
+      <div class="field"><label>备注（可选）</label><input class="input" name="note" placeholder="补充信息"></div>
+    </div></form>`,
+    foot: `<button class="btn ghost" data-act="closeModal">取消</button>
+      <button class="btn primary" type="submit" form="task-form">${ic('check')}添加任务</button>`,
+  });
+  $('#task-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const f = Object.fromEntries(new FormData(e.target).entries());
+    if (!f.text.trim()) return;
+    newTask(f.text.trim(), f.priority, f.due || null, f.link || null, (f.note || '').trim());
+    closeModal();
+    toast('任务已添加');
+  });
 }
 
 /* ---------- 选题中枢 ---------- */
@@ -361,17 +398,46 @@ function topicCard(t) {
         <button class="icon-btn" data-act="moveTopic" data-id="${t.id}" data-dir="-1" ${idx <= 0 ? 'disabled' : ''} aria-label="上一阶段">${ic('chevL')}</button>
         <button class="icon-btn" data-act="moveTopic" data-id="${t.id}" data-dir="1" ${idx >= state.db.topics.statuses.length - 1 ? 'disabled' : ''} aria-label="下一阶段">${ic('chevR')}</button>
       </div>
+      <button class="icon-btn" data-act="toggleHideTopic" data-id="${t.id}" title="从看板隐藏">${ic('eyeOff')}</button>
       <button class="icon-btn danger" data-act="delTopic" data-id="${t.id}" aria-label="删除">${ic('trash')}</button>
     </div>
   </div>`;
 }
-function kanbanHTML(list) {
+function laneSort(a, b) {
+  const p = (PRIO_ORD[a.priority] ?? 9) - (PRIO_ORD[b.priority] ?? 9);
+  if (p) return p;
+  const ae = a.eta || '9999-99-99', be = b.eta || '9999-99-99';
+  if (ae !== be) return ae < be ? -1 : 1;
+  return a.created < b.created ? 1 : -1;
+}
+function lanesHTML(list) {
   const st = state.db.topics.statuses;
-  return `<div class="kanban">${st.map((s) => {
-    const cards = list.filter((t) => t.status === s);
-    return `<div class="kcol"><div class="kcol-head"><span class="t">${s}</span><span class="c num">${cards.length}</span></div>
-      <div class="kcards">${cards.map(topicCard).join('') || `<div style="text-align:center;color:var(--text-3);font-size:12px;padding:14px 0">暂无</div>`}</div></div>`;
-  }).join('')}</div>`;
+  const shown = list.filter((t) => !t.hidden);
+  const html = st.map((s) => {
+    const cards = shown.filter((t) => t.status === s).sort(laneSort);
+    if (!cards.length) return '';
+    const n = Math.min(cards.length, 3);
+    return `<div class="group g${n}">
+      <div class="lane-head"><span class="t">${s}</span><span class="c num">${cards.length}</span></div>
+      <div class="g-cards c${n}">${cards.map(topicCard).join('')}</div>
+    </div>`;
+  }).join('');
+  return `<div class="board">${html || `<div class="panel">${emptyHTML('board', '看板是空的', '点右上角「新建选题」，或把热榜信号一键转为选题。')}</div>`}</div>`;
+}
+function hiddenFoldHTML(list) {
+  const hidden = list.filter((t) => t.hidden);
+  if (!hidden.length) return '';
+  return `<div class="hidden-fold ${state.showHidden ? 'open' : ''}">
+    <button class="hidden-fold-head" data-act="toggleShowHidden">${ic('chevR')}已隐藏的选题（${hidden.length}）</button>
+    ${state.showHidden ? `<div class="hidden-list">${hidden.map((h) => `
+      <div class="hidden-row">
+        <span class="pill ${PLAT_CLS[h.platform] || 'p-platform'}" style="flex:none">${esc(h.platform)}</span>
+        <a href="#" class="h-title" data-act="editTopic" data-id="${h.id}" style="color:inherit">${esc(h.title)}</a>
+        <span style="font-size:11.5px;color:var(--text-3);flex:none">${esc(h.status)}</span>
+        <button class="btn sm ghost" data-act="toggleHideTopic" data-id="${h.id}">恢复</button>
+        <button class="icon-btn danger" data-act="delTopic" data-id="${h.id}" aria-label="删除">${ic('trash')}</button>
+      </div>`).join('')}</div>` : ''}
+  </div>`;
 }
 function viewTopics() {
   const d = state.db.topics;
@@ -401,10 +467,11 @@ function viewTopics() {
         </div>`).join('') : ''}
     </div>
     <div class="section-gap"><h2 class="section-title">选题看板 <span class="cnt num">${d.items.length}</span></h2>
-    ${kanbanHTML(d.items)}</div>`;
+    ${lanesHTML(d.items)}
+    ${hiddenFoldHTML(d.items)}</div>`;
   } else if (v === 'renew') {
     const list = d.items.filter((t) => t.source === '旧选题');
-    body = `<div class="banner">${ic('bulb')} 这里汇集来源为「旧选题」的内容，适合翻新重做或二次剪辑。</div>${kanbanHTML(list)}`;
+    body = `<div class="banner">${ic('bulb')} 这里汇集来源为「旧选题」的内容，适合翻新重做或二次剪辑。</div>${lanesHTML(list)}`;
   } else if (v === 'published') {
     const list = d.items.filter((t) => t.status === '已发布' || t.status === '已复盘').sort((a, b) => (a.eta < b.eta ? 1 : -1));
     body = `<div class="panel table-wrap"><table class="data"><thead><tr>
@@ -427,13 +494,20 @@ function viewTopics() {
   } else {
     body = calendarHTML();
   }
-  return head('选题中枢', '从热榜信号到复盘数据的完整流水线', tabs + ` <button class="btn primary" data-act="addTopic">${ic('plus')}新建选题</button>`) + `
+  return head('选题中枢', '从热榜信号到复盘数据的完整流水线', tabs + `
+    <button class="btn ghost" data-act="syncFeishu" title="从飞书多维表格拉取选题">${ic('refresh')}从飞书同步</button>
+    <button class="btn primary" data-act="addTopic">${ic('plus')}新建选题</button>`) + `
     <div class="stat-row">
       <div class="stat"><div class="v num">${counts['待评估'] || 0}</div><div class="k">待评估</div></div>
       <div class="stat dim"><div class="v num">${counts['制作中'] || 0}</div><div class="k">制作中</div></div>
       <div class="stat dim"><div class="v num">${counts['待发布'] || 0}</div><div class="k">待发布</div></div>
       <div class="stat dim"><div class="v num">${(counts['已发布'] || 0) + (counts['已复盘'] || 0)}</div><div class="k">已发布</div></div>
     </div>${body}`;
+}
+function viewCalendar() {
+  const items = state.db.topics?.items || [];
+  const upcoming = items.filter((t) => t.eta && t.eta >= todayISO()).length;
+  return head('日历排期', `还有 ${upcoming} 个选题待发布，点日期上的卡片可编辑`, ` <button class="btn primary" data-act="addTopic">${ic('plus')}新建选题</button>`) + calendarHTML();
 }
 function calendarHTML() {
   const { y, m } = state.cal;
@@ -521,23 +595,40 @@ function promptCard(p) {
   const meta = [];
   if (p.type === '文生图') { if (p.model) meta.push('模型 ' + p.model); if (p.vars?.length) meta.push('变量 ' + p.vars.join('、')); }
   else { if (p.lens) meta.push('镜头 ' + p.lens); if (p.duration) meta.push('时长 ' + p.duration); }
-  return `<div class="panel prompt-card" data-id="${p.id}">
+  const linked = (state.db.topics?.items || []).filter((t) => (t.prompts || []).includes(p.id)).length;
+  return `<div class="panel prompt-card" data-act="openPrompt" data-id="${p.id}">
     <div class="p-head">
       <span class="pill p-type">${esc(p.type)}</span>
       <span class="p-title">${esc(p.title)}</span>
       <button class="icon-btn star ${p.favorite ? 'on' : ''}" data-act="toggleFav" data-id="${p.id}" aria-label="收藏" style="${p.favorite ? 'color:var(--warn)' : ''}">${ic('star')}</button>
     </div>
-    <pre class="p-body">${esc(p.body || '')}</pre>
+    <div class="p-body">${esc(p.body || '') || '<span style="color:var(--text-3)">暂无正文，点开补充</span>'}</div>
     <div class="p-meta">${(p.tags || []).map((tg) => `<span class="pill p-src">${esc(tg)}</span>`).join('')}
-      ${meta.map((m) => `<span class="link-tag">${esc(m)}</span>`).join('')}</div>
-    <div class="p-foot">
-      <button class="btn sm soft" data-act="copyPrompt" data-id="${p.id}">${ic('copy')}复制</button>
-      <button class="btn sm ghost" data-act="linkPrompt" data-id="${p.id}">关联选题</button>
-      <span class="spacer"></span>
-      <button class="icon-btn" data-act="editPrompt" data-id="${p.id}" aria-label="编辑">${ic('edit')}</button>
-      <button class="icon-btn danger" data-act="delPrompt" data-id="${p.id}" aria-label="删除">${ic('trash')}</button>
-    </div>
+      ${meta.map((m) => `<span class="link-tag">${esc(m)}</span>`).join('')}
+      ${linked ? `<span class="link-tag">${ic('board')} 关联 ${linked}</span>` : ''}</div>
   </div>`;
+}
+function promptDetailModal(p) {
+  const topics = (state.db.topics?.items || []).filter((t) => (t.prompts || []).includes(p.id));
+  const rows = [];
+  if (p.type === '文生图') { if (p.model) rows.push(['模型', p.model]); if (p.vars?.length) rows.push(['变量', p.vars.join('、')]); }
+  else { if (p.lens) rows.push(['镜头运动', p.lens]); if (p.duration) rows.push(['时长', p.duration]); if (p.ref) rows.push(['参考图/视频', p.ref]); if (p.log) rows.push(['成功记录', p.log]); }
+  openModal({
+    title: p.title,
+    wide: true,
+    body: `
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+        <span class="pill p-type">${esc(p.type)}</span>
+        ${(p.tags || []).map((tg) => `<span class="pill p-src">${esc(tg)}</span>`).join('')}
+      </div>
+      <div class="detail-block">${esc(p.body || '') || '<span style="color:var(--text-3)">暂无正文，点下方「编辑」补充</span>'}</div>
+      ${rows.length ? `<div class="detail-rows">${rows.map(([k, v]) => `<div class="d-row"><span class="d-k">${k}</span><span class="d-v">${esc(v)}</span></div>`).join('')}</div>` : ''}
+      ${topics.length ? `<div class="d-row"><span class="d-k">关联选题</span><span class="d-v">${topics.map((t) => esc(t.title)).join('、')}</span></div>` : ''}`,
+    foot: `<button class="btn danger-ghost" data-act="delPrompt" data-id="${p.id}" style="margin-right:auto">${ic('trash')}删除</button>
+      <button class="btn ghost" data-act="linkPrompt" data-id="${p.id}">关联选题</button>
+      <button class="btn ghost" data-act="editPrompt" data-id="${p.id}">编辑</button>
+      <button class="btn primary" data-act="copyPrompt" data-id="${p.id}">${ic('copy')}复制提示词</button>`,
+  });
 }
 function viewPrompts() {
   const items = state.db.prompts?.items || [];
@@ -691,20 +782,27 @@ function siteModal(s) {
 }
 
 /* ---------- 灵感速记 ---------- */
-function ideaRow(i) {
-  return `<div class="idea-item ${i.processed ? 'done' : ''}" data-id="${i.id}">
-    <div style="flex:1;min-width:0">
-      <div class="i-text">${esc(i.text)}</div>
-      <div class="i-time">${relTime(i.created)}</div>
-    </div>
-    <div class="row-actions">
-      ${i.processed ? '' : `<button class="btn sm ghost" data-act="ideaToTask" data-id="${i.id}">转待办</button>
-      <button class="btn sm ghost" data-act="ideaToTopic" data-id="${i.id}">转选题</button>
-      <button class="btn sm ghost" data-act="ideaToPrompt" data-id="${i.id}">转提示词</button>`}
-      <button class="icon-btn" data-act="toggleIdea" data-id="${i.id}" aria-label="标记已处理">${ic(i.processed ? 'refresh' : 'check')}</button>
-      <button class="icon-btn danger" data-act="delIdea" data-id="${i.id}" aria-label="删除">${ic('trash')}</button>
-    </div>
+function ideaCard(i) {
+  const summary = i.text.length > 20 ? i.text.slice(0, 20) + '…' : i.text;
+  return `<div class="panel idea-card ${i.processed ? 'done' : ''}" data-act="openIdea" data-id="${i.id}">
+    <div class="i-text">${esc(summary)}</div>
+    <div class="i-time">${relTime(i.created)}${i.processed ? ' · 已处理' : ''}</div>
   </div>`;
+}
+function ideaModal(i) {
+  openModal({
+    title: '灵感详情',
+    wide: true,
+    body: `<div class="detail-block" style="max-height:none;font-size:13.5px">${esc(i.text)}</div>
+      <div class="d-row" style="border-top:none;padding-top:12px"><span class="d-k">记录时间</span><span class="d-v">${relTime(i.created)}</span></div>
+      ${i.processed ? '<div class="d-row"><span class="d-k">状态</span><span class="d-v">已处理</span></div>' : ''}`,
+    foot: `${i.processed ? '' : `<button class="btn ghost" data-act="ideaToTask" data-id="${i.id}">转待办</button>
+      <button class="btn ghost" data-act="ideaToTopic" data-id="${i.id}">转选题</button>
+      <button class="btn ghost" data-act="ideaToPrompt" data-id="${i.id}">转提示词</button>`}
+      <span style="flex:1"></span>
+      <button class="btn danger-ghost" data-act="delIdea" data-id="${i.id}">${ic('trash')}删除</button>
+      <button class="btn ghost" data-act="toggleIdea" data-id="${i.id}">${i.processed ? '标回待处理' : '标记已处理'}</button>`,
+  });
 }
 function viewIdeas() {
   const items = (state.db.ideas?.items || []).slice().sort((a, b) => (a.created < b.created ? 1 : -1));
@@ -723,14 +821,58 @@ function viewIdeas() {
         <button class="btn primary" type="submit">${ic('plus')}记下来</button>
       </form>
     </div>
-    <div class="panel section-gap">
-      ${list.length ? list.map(ideaRow).join('') : emptyHTML('bulb', '没有待处理的灵感', '上面的输入框想到就记，之后再转成任务、选题或提示词。')}
-    </div>`;
+    ${list.length ? `<div class="idea-grid" style="margin-top:14px">${list.map(ideaCard).join('')}</div>`
+      : `<div class="panel" style="margin-top:14px">${emptyHTML('bulb', '没有待处理的灵感', '上面的输入框想到就记，之后再转成任务、选题或提示词。')}</div>`}`;
 }
 
+/* ---------- 图库 ---------- */
+function viewGallery() {
+  const folders = state.db.gallery?.folders || [];
+  const total = folders.reduce((n, f) => n + f.images.length, 0);
+  const cur = state.route.view && state.route.view !== 'main' ? state.route.view : null;
+  if (cur) {
+    const f = folders.find((x) => x.name === cur);
+    if (f) {
+      return head(f.name, `${f.images.length} 张图 · 来自仓库 gallery/${f.name}/`, `<a class="btn ghost" href="#/gallery">${ic('chevL')}返回图库</a>`) + `
+        <div class="gallery-grid">${f.images.map((src, i) => `
+          <button class="g-img" data-act="openLb" data-folder="${esc(f.name)}" data-i="${i}" aria-label="查看大图">
+            <img src="${esc(src)}" loading="lazy" alt="">
+          </button>`).join('')}</div>`;
+    }
+  }
+  return head('图库', folders.length ? `${folders.length} 个文件夹，共 ${total} 张图` : '图片存在仓库 gallery/ 文件夹里', ` <a class="btn ghost" href="https://github.com/${esc(repoCfg().owner)}/${esc(repoCfg().repo)}/upload/main/gallery/" target="_blank" rel="noopener">${ic('plus')}上传图片</a>`) + `
+    ${folders.length ? `<div class="gallery-folders">${folders.map((f) => `
+      <a class="panel gallery-folder" href="#/gallery/${encodeURIComponent(f.name)}">
+        <img class="gf-cover" src="${esc(f.images[0])}" alt="${esc(f.name)}" loading="lazy">
+        <div class="gf-info"><div class="gf-name">${esc(f.name)}</div><div class="gf-cnt num">${f.images.length} 张</div></div>
+      </a>`).join('')}</div>`
+      : `<div class="panel">${emptyHTML('image', '图库还是空的', '在仓库的 gallery/ 下新建文件夹并上传图片（GitHub 网页可直接拖拽上传），页面会自动显示。')}</div>`}`;
+}
+function openLightbox(folderName, i) {
+  const f = (state.db.gallery?.folders || []).find((x) => x.name === folderName);
+  if (!f) return;
+  renderLb({ folder: f, i });
+}
+function renderLb(lb) {
+  state.lb = lb;
+  const { folder, i } = lb;
+  $('#lb-root').innerHTML = `<div class="lb-scrim" data-act="closeLb">
+    <img class="lb-img" src="${esc(folder.images[i])}" alt="">
+    <div class="lb-bar">
+      <span class="num">${i + 1} / ${folder.images.length}</span>
+      <span class="lb-name">${esc(folder.name)}</span>
+      <a class="btn sm ghost" href="${esc(folder.images[i])}" target="_blank" rel="noopener">原图</a>
+    </div>
+    ${folder.images.length > 1 ? `
+      <button class="lb-nav lb-prev" data-act="lbPrev" aria-label="上一张">${ic('chevL')}</button>
+      <button class="lb-nav lb-next" data-act="lbNext" aria-label="下一张">${ic('chevR')}</button>` : ''}
+  </div>`;
+}
+function closeLightbox() { $('#lb-root').innerHTML = ''; state.lb = null; }
+
 /* ---------- 动作 ---------- */
-function newTask(text, priority, due, link) {
-  state.db.tasks.items.push({ id: uid(), text, priority, due: due || null, done: false, link: link || null, created: new Date().toISOString() });
+function newTask(text, priority, due, link, note) {
+  state.db.tasks.items.push({ id: uid(), text, priority, due: due || null, done: false, link: link || null, note: note || '', created: new Date().toISOString() });
   scheduleSave('tasks'); renderAll();
 }
 function newTopic(obj) {
@@ -751,7 +893,8 @@ async function copyText(text) {
   }
 }
 const ACTIONS = {
-  nav: (id, el) => { state.route = { mod: el.dataset.mod, view: el.dataset.mod === 'todo' ? 'focus' : el.dataset.mod === 'topics' ? 'board' : 'main' }; if (el.dataset.mod === 'prompts') state.route.view = 'all'; location.hash = '#/' + el.dataset.mod; closeSide(); renderAll(); window.scrollTo(0, 0); },
+  addTask: () => taskModal(),
+  nav: (id, el) => { state.route = routeFor(el.dataset.mod); location.hash = '#/' + el.dataset.mod; closeSide(); renderAll(); window.scrollTo(0, 0); },
   tab: (id, el) => {
     const { mod, view } = el.dataset;
     if (mod === 'prompts') state.promptFilter = view;
@@ -781,13 +924,80 @@ const ACTIONS = {
     if (i >= 0 && i < st.length) { t.status = st[i]; scheduleSave('topics'); renderAll(); }
   },
   delTopic: (id) => confirmDlg('删除这个选题？', () => { state.db.topics.items = state.db.topics.items.filter((x) => x.id !== id); scheduleSave('topics'); renderAll(); toast('选题已删除'); }),
+  toggleHideTopic: (id) => {
+    const t = state.db.topics.items.find((x) => x.id === id);
+    t.hidden = !t.hidden;
+    scheduleSave('topics'); renderAll();
+    toast(t.hidden ? '已从看板隐藏，在底部「已隐藏的选题」里找回' : '已恢复显示');
+  },
+  toggleShowHidden: () => { state.showHidden = !state.showHidden; renderView(); },
   editStats: (id) => statsModal(state.db.topics.items.find((x) => x.id === id)),
+  syncFeishu: async () => {
+    if (!state.feishuUrl) { toast('先在设置里填飞书同步地址', 'err'); settingsModal(); return; }
+    toast('正在从飞书拉取…');
+    try {
+      const res = await fetch(state.feishuUrl.replace(/\/+$/, '') + '/topics', { cache: 'no-store' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const j = await res.json();
+      const d = state.db.topics;
+      const existing = new Set(d.items.map((t) => t.title));
+      const fresh = (j.topics || []).map((t) => ({
+        title: String(t.title || '').trim(),
+        platform: ['公众号', '小红书', '抖音'].includes(t.platform) ? t.platform : '小红书',
+        source: t.source || '灵感',
+        status: d.statuses.includes(t.status) ? t.status : '待评估',
+        priority: ['高', '中', '低'].includes(t.priority) ? t.priority : '中',
+        eta: typeof t.eta === 'number' ? new Date(t.eta).toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' }) : (t.eta || null),
+        url: t.url || '',
+      })).filter((t) => t.title && !existing.has(t.title));
+      if (!fresh.length) { toast('飞书里没有看板上没有的新选题'); return; }
+      openModal({
+        title: '从飞书导入选题',
+        body: `<p style="margin:2px 0 10px;color:var(--text-2)">拉到 ${(j.topics || []).length} 条，其中 ${fresh.length} 条是看板上没有的。勾选要导入的（可搜索）：</p>
+          <input class="input" id="fs-filter" placeholder="搜索标题关键字" style="width:100%;margin-bottom:8px">
+          <div id="fs-list" style="max-height:320px;overflow:auto">${fresh.map((t, i) => `
+            <label class="fs-row" data-title="${esc(t.title.toLowerCase())}">
+              <input type="checkbox" class="fs-ck" data-i="${i}">
+              <span class="pill ${PLAT_CLS[t.platform] || 'p-platform'}" style="flex:none">${esc(t.platform)}</span>
+              <span style="flex:1;min-width:0;overflow-wrap:anywhere">${esc(t.title)}</span>
+              ${t.eta ? `<span class="num" style="font-size:11.5px;color:var(--text-3);flex:none">${esc(t.eta)}</span>` : ''}
+            </label>`).join('')}</div>`,
+        foot: `<button class="btn ghost" data-act="closeModal">取消</button>
+          <button class="btn sm ghost" id="fs-all" style="margin-right:auto">全选</button>
+          <button class="btn primary" id="fs-import">导入</button>`,
+      });
+      const fsRows = () => $$('#fs-list .fs-row');
+      $('#fs-filter').addEventListener('input', (e) => {
+        const q = e.target.value.toLowerCase();
+        fsRows().forEach((r) => { r.style.display = r.dataset.title.includes(q) ? '' : 'none'; });
+      });
+      $('#fs-all').addEventListener('click', () => fsRows().forEach((r) => { r.querySelector('.fs-ck').checked = true; }));
+      const updateCount = () => { $('#fs-import').textContent = '导入 ' + $$('#fs-list .fs-ck:checked').length + ' 条'; };
+      $$('#fs-list .fs-ck').forEach((cb) => cb.addEventListener('change', updateCount));
+      updateCount();
+      $('#fs-import').addEventListener('click', () => {
+        const picked = $$('#fs-list .fs-ck:checked').map((cb) => fresh[+cb.dataset.i]);
+        if (!picked.length) { toast('先勾选要导入的选题', 'err'); return; }
+        picked.forEach((t) => newTopic(t));
+        closeModal();
+        toast('已导入 ' + picked.length + ' 条选题');
+      });
+    } catch (e) {
+      toast('飞书拉取失败：' + e.message, 'err');
+    }
+  },
   addSignal: () => {},
   toggleSignal: (id) => { const s = state.db.topics.signals.find((x) => x.id === id); s.handled = !s.handled; scheduleSave('topics'); renderAll(); },
   delSignal: (id) => { state.db.topics.signals = state.db.topics.signals.filter((x) => x.id !== id); scheduleSave('topics'); renderAll(); },
   signalToTopic: (id) => { const s = state.db.topics.signals.find((x) => x.id === id); s.handled = true; newTopic({ title: s.text.split('：').slice(1).join('：') || s.text, platform: '小红书', source: '热榜', status: '待评估' }); toast('信号已转为选题'); },
   calPrev: () => { const c = state.cal; c.m--; if (c.m < 0) { c.m = 11; c.y--; } renderView(); },
   calNext: () => { const c = state.cal; c.m++; if (c.m > 11) { c.m = 0; c.y++; } renderView(); },
+  /* 图库 */
+  openLb: (id, el) => openLightbox(el.dataset.folder, +el.dataset.i),
+  lbHold: () => {},
+  closeLb: () => closeLightbox(),
+  lbPrev: () => { const lb = state.lb; if (!lb) return; renderLb({ ...lb, i: (lb.i - 1 + lb.folder.images.length) % lb.folder.images.length }); },
+  lbNext: () => { const lb = state.lb; if (!lb) return; renderLb({ ...lb, i: (lb.i + 1) % lb.folder.images.length }); },
   /* 提示词 */
   addPromptModal: () => promptModal(null),
   editPrompt: (id) => promptModal(state.db.prompts.items.find((x) => x.id === id)),
@@ -795,16 +1005,18 @@ const ACTIONS = {
   delPrompt: (id) => confirmDlg('删除这条提示词？', () => { state.db.prompts.items = state.db.prompts.items.filter((x) => x.id !== id); scheduleSave('prompts'); renderAll(); toast('提示词已删除'); }),
   copyPrompt: (id) => { const p = state.db.prompts.items.find((x) => x.id === id); copyText(p.body || p.title); },
   linkPrompt: (id) => linkModal(state.db.prompts.items.find((x) => x.id === id)),
+  openPrompt: (id) => promptDetailModal(state.db.prompts.items.find((x) => x.id === id)),
   /* 网站 */
   addSiteModal: () => siteModal(null),
   editSite: (id) => siteModal(state.db.sites.items.find((x) => x.id === id)),
   delSite: (id) => confirmDlg('删除这个网站？', () => { state.db.sites.items = state.db.sites.items.filter((x) => x.id !== id); scheduleSave('sites'); renderAll(); toast('已删除'); }),
   /* 灵感 */
-  toggleIdea: (id) => { const i = state.db.ideas.items.find((x) => x.id === id); i.processed = !i.processed; scheduleSave('ideas'); renderAll(); },
-  delIdea: (id) => { state.db.ideas.items = state.db.ideas.items.filter((x) => x.id !== id); scheduleSave('ideas'); renderAll(); },
-  ideaToTask: (id) => { const i = state.db.ideas.items.find((x) => x.id === id); i.processed = true; newTask(i.text, '中', null, null); scheduleSave('ideas'); renderAll(); toast('已转为待办'); },
-  ideaToTopic: (id) => { const i = state.db.ideas.items.find((x) => x.id === id); i.processed = true; scheduleSave('ideas'); newTopic({ title: i.text, platform: '小红书', source: '灵感', status: '待评估' }); toast('已转为选题（待评估）'); },
-  ideaToPrompt: (id) => { const i = state.db.ideas.items.find((x) => x.id === id); i.processed = true; scheduleSave('ideas'); newPrompt({ type: '文生图', title: i.text }); toast('已在提示词库创建草稿'); },
+  openIdea: (id) => ideaModal(state.db.ideas.items.find((x) => x.id === id)),
+  toggleIdea: (id) => { const i = state.db.ideas.items.find((x) => x.id === id); i.processed = !i.processed; scheduleSave('ideas'); renderAll(); closeModal(); toast(i.processed ? '已标记处理' : '已标回待处理'); },
+  delIdea: (id) => { state.db.ideas.items = state.db.ideas.items.filter((x) => x.id !== id); scheduleSave('ideas'); renderAll(); closeModal(); toast('已删除'); },
+  ideaToTask: (id) => { const i = state.db.ideas.items.find((x) => x.id === id); i.processed = true; newTask(i.text, '中', null, null); scheduleSave('ideas'); renderAll(); closeModal(); toast('已转为待办'); },
+  ideaToTopic: (id) => { const i = state.db.ideas.items.find((x) => x.id === id); i.processed = true; scheduleSave('ideas'); newTopic({ title: i.text, platform: '小红书', source: '灵感', status: '待评估' }); closeModal(); toast('已转为选题（待评估）'); },
+  ideaToPrompt: (id) => { const i = state.db.ideas.items.find((x) => x.id === id); i.processed = true; scheduleSave('ideas'); newPrompt({ type: '文生图', title: i.text }); closeModal(); toast('已在提示词库创建草稿'); },
 };
 function closeSide() { $('#sidebar').classList.remove('open'); $('#scrim').hidden = true; }
 
@@ -819,6 +1031,9 @@ function settingsModal() {
         <span class="hint">仅保存在本机浏览器 localStorage，用于在页面上直接增删改并提交到仓库。建议使用只授予本仓库 Contents 读写权限的 fine-grained token，不放进任何代码。</span></div>
       <div class="field"><label>仓库 Owner</label><input class="input" name="owner" value="${esc(cfg.owner)}"></div>
       <div class="field"><label>仓库名</label><input class="input" name="repo" value="${esc(cfg.repo)}"></div>
+      <div class="field full"><label>飞书同步地址（Cloudflare Worker）</label>
+        <input class="input" name="feishu" value="${esc(state.feishuUrl)}" placeholder="https://你的-worker.workers.dev">
+        <span class="hint">填好 Worker 后，选题中枢会出现「从飞书同步」按钮。Worker 部署方法见仓库 worker/ 目录的说明。</span></div>
     </div></form>`,
     foot: `<button class="btn danger-ghost" id="st-clear" style="margin-right:auto">清除令牌</button>
       <button class="btn ghost" id="st-test">测试连接</button>
@@ -829,6 +1044,8 @@ function settingsModal() {
     const f = Object.fromEntries(new FormData(e.target).entries());
     state.token = f.token.trim();
     state.token ? localStorage.setItem('wb_token', state.token) : localStorage.removeItem('wb_token');
+    state.feishuUrl = (f.feishu || '').trim();
+    state.feishuUrl ? localStorage.setItem('wb_feishu_url', state.feishuUrl) : localStorage.removeItem('wb_feishu_url');
     localStorage.setItem('wb_repo', JSON.stringify({ owner: f.owner.trim(), repo: f.repo.trim() }));
     state.shas = {}; closeModal(); renderAll(); toast('设置已保存');
   });
@@ -856,13 +1073,7 @@ document.addEventListener('click', (e) => {
 });
 document.addEventListener('submit', (e) => {
   const f = e.target;
-  if (f.id === 'task-add') {
-    e.preventDefault();
-    const d = Object.fromEntries(new FormData(f).entries());
-    if (!d.text.trim()) return;
-    newTask(d.text.trim(), d.priority, d.due || null, d.link || null);
-    toast('任务已添加');
-  } else if (f.id === 'signal-add') {
+  if (f.id === 'signal-add') {
     e.preventDefault();
     const d = Object.fromEntries(new FormData(f).entries());
     if (!d.text.trim()) return;
@@ -877,14 +1088,14 @@ document.addEventListener('submit', (e) => {
   }
 });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { closeModal(); closeSide(); }
+  if (e.key === 'Escape') { closeModal(); closeSide(); closeLightbox(); }
+  if (state.lb) {
+    if (e.key === 'ArrowLeft') ACTIONS.lbPrev();
+    if (e.key === 'ArrowRight') ACTIONS.lbNext();
+  }
   const ideaBox = $('#idea-add textarea');
   if (ideaBox && document.activeElement === ideaBox && e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault(); $('#idea-add').requestSubmit();
-  }
-  const taskText = $('#task-add input[name="text"]');
-  if (taskText && document.activeElement === taskText && e.key === 'Enter') {
-    e.preventDefault(); $('#task-add').requestSubmit();
   }
 });
 document.addEventListener('input', (e) => {
@@ -897,15 +1108,52 @@ document.addEventListener('input', (e) => {
 });
 $('#scrim').addEventListener('click', closeSide);
 window.addEventListener('hashchange', () => {
-  const m = location.hash.match(/^#\/(\w+)(?:\/(\w+))?/);
-  if (m) { state.route = { mod: m[1], view: m[2] || (m[1] === 'todo' ? 'focus' : m[1] === 'topics' ? 'board' : 'main') }; renderAll(); }
+  const m = location.hash.match(/^#\/(\w+)(?:\/(.+))?/);
+  if (m) { state.route = { mod: m[1], view: m[2] ? decodeURIComponent(m[2]) : routeFor(m[1]).view }; renderAll(); }
+});
+
+/* ---------- 侧边栏模块拖动排序 ---------- */
+let dragMod = null;
+document.addEventListener('dragstart', (e) => {
+  const item = e.target.closest ? e.target.closest('.nav-item') : null;
+  if (!item || !item.dataset.mod) return;
+  dragMod = item.dataset.mod;
+  item.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+  try { e.dataTransfer.setData('text/plain', dragMod); } catch (err) {}
+});
+document.addEventListener('dragover', (e) => {
+  if (!dragMod) return;
+  const item = e.target.closest ? e.target.closest('.nav-item') : null;
+  if (!item || item.dataset.mod === dragMod) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  $$('.nav-item').forEach((n) => n.classList.remove('drag-over'));
+  item.classList.add('drag-over');
+});
+document.addEventListener('drop', (e) => {
+  if (!dragMod) return;
+  const item = e.target.closest ? e.target.closest('.nav-item') : null;
+  if (!item || item.dataset.mod === dragMod) return;
+  e.preventDefault();
+  const target = item.dataset.mod;
+  const order = state.modOrder.filter((m) => m !== dragMod);
+  order.splice(order.indexOf(target), 0, dragMod);
+  state.modOrder = order;
+  localStorage.setItem('wb_mod_order', JSON.stringify(order));
+  renderSidebar();
+});
+document.addEventListener('dragend', () => {
+  dragMod = null;
+  $$('.nav-item').forEach((n) => n.classList.remove('dragging', 'drag-over'));
 });
 
 /* ---------- 启动 ---------- */
 (async function init() {
   renderAll();
   await loadAll();
-  const m = location.hash.match(/^#\/(\w+)(?:\/(\w+))?/);
-  if (m) state.route = { mod: m[1], view: m[2] || (m[1] === 'todo' ? 'focus' : m[1] === 'topics' ? 'board' : 'main') };
+  const m = location.hash.match(/^#\/(\w+)(?:\/(.+))?/);
+  if (m) state.route = { mod: m[1], view: m[2] ? decodeURIComponent(m[2]) : routeFor(m[1]).view };
+  else state.route = routeFor(state.modOrder[0]);
   renderAll();
 })();

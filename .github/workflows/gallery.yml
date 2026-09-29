@@ -1,0 +1,24 @@
+name: build-gallery
+on:
+  push:
+    branches: [main]
+    paths:
+      - "gallery/**"
+    paths-ignore:
+      - "gallery/index.json"
+permissions:
+  contents: write
+jobs:
+  index:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 生成图库索引
+        run: python3 scripts/build-gallery.py
+      - name: 提交索引
+        run: |
+          git config user.name "gallery-bot"
+          git config user.email "actions@github.com"
+          git add gallery/index.json
+          git diff --cached --quiet || git commit -m "图库: 更新索引"
+          git push

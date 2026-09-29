@@ -1,0 +1,12 @@
+{
+  "folders": [
+    {
+      "name": "示例-灵感图",
+      "images": [
+        "gallery/示例-灵感图/示例1.svg",
+        "gallery/示例-灵感图/示例2.svg",
+        "gallery/示例-灵感图/示例3.svg"
+      ]
+    }
+  ]
+}
