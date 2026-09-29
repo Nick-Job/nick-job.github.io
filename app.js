@@ -657,6 +657,10 @@ function viewPrompts() {
 }
 function promptModal(p) {
   const type = p?.type || '文生图';
+  const durations = ['5秒', '10秒', '15秒', '20秒', '30秒'];
+  const curDur = p?.duration || '';
+  const durOpts = (curDur && !durations.includes(curDur) ? [curDur, ...durations] : durations)
+    .map((d) => `<option value="${esc(d)}" ${d === curDur ? 'selected' : ''}>${esc(d)}</option>`).join('');
   openModal({
     title: p ? '编辑提示词' : '新建提示词',
     body: `<form id="prompt-form"><div class="form-grid">
@@ -667,7 +671,7 @@ function promptModal(p) {
       <div class="field"><label>模型（文生图）</label><input class="input" name="model" value="${esc(p?.model || '')}" placeholder="Midjourney / SD"></div>
       <div class="field"><label>变量（文生图）</label><input class="input" name="vars" value="${esc((p?.vars || []).join('、'))}" placeholder="{城市}、{天气}"></div>
       <div class="field"><label>镜头运动（Seedance）</label><input class="input" name="lens" value="${esc(p?.lens || '')}" placeholder="中近景，慢推"></div>
-      <div class="field"><label>时长（Seedance）</label><input class="input" name="duration" value="${esc(p?.duration || '')}" placeholder="5s"></div>
+      <div class="field"><label>时长（Seedance）</label><select class="select" name="duration" style="width:100%"><option value="" ${curDur ? '' : 'selected'}>不限</option>${durOpts}</select></div>
       <div class="field"><label>参考图 / 视频（Seedance）</label><input class="input" name="ref" value="${esc(p?.ref || '')}"></div>
       <div class="field"><label>成功记录（Seedance）</label><input class="input" name="log" value="${esc(p?.log || '')}" placeholder="第几次、怎么调成功的"></div>
       <div class="field full"><label style="display:flex;align-items:center;gap:8px;cursor:pointer">
