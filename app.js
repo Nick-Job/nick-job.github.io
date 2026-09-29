@@ -228,7 +228,7 @@ function renderSidebar() {
     </button>`).join('');
   const themeIcon = document.documentElement.dataset.theme === 'dark' ? 'sun' : 'moon';
   $('#sidebar').innerHTML = `
-    <div class="brand"><img class="brand-mark" src="assets/logo.png" alt="logo">
+    <div class="brand"><div class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4.5" width="16" height="3.2" rx="1.6"/><rect x="4" y="16.3" width="16" height="3.2" rx="1.6"/><rect x="10.4" y="4.5" width="3.2" height="15" rx="1.6"/></svg></div>
       <div><div class="brand-name">个人工作台</div><div class="brand-sub">${esc(repoCfg().owner)} 的内容创作台</div></div>
     </div>
     <nav class="nav"><div class="nav-label">模块</div>${items}</nav>
