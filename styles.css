@@ -64,7 +64,7 @@
 /* ---------- base ---------- */
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
-html { -webkit-text-size-adjust: 100%; }
+html { font-family: var(--font); -webkit-text-size-adjust: 100%; }
 body {
   font-family: var(--font);
   background: var(--bg);
@@ -73,7 +73,8 @@ body {
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
 }
-button, input, select, textarea { font: inherit; color: inherit; }
+button, input, select, textarea { font-family: var(--font); font-size: inherit; font-weight: inherit; color: inherit; }
+#sidebar, #sidebar * { font-family: var(--font); }
 a { color: var(--accent-text); text-decoration: none; }
 a:hover { text-decoration: underline; }
 svg.ic { width: 17px; height: 17px; flex: none; vertical-align: -3px; }

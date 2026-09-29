@@ -536,16 +536,13 @@ function loadModOrder() {
 state.modOrder = loadModOrder();
 state.route = routeFor(state.modOrder[0]);
 function syncInfo() {
-  let host = '';
-  try { host = state.apiBase ? new URL(state.apiBase).host : '未配置数据服务'; }
-  catch (e) { host = state.apiBase || '未配置数据服务'; }
   const map = {
-    ok: ['ok', '已保存', host],
-    pending: ['pending', '等待自动保存', host],
-    busy: ['busy', '正在保存', host],
-    err: ['err', '保存失败', state.lastErr || '请检查 Worker 配置'],
+    ok: ['ok', '已保存', '已同步到云端'],
+    pending: ['pending', '等待保存', '改动会自动保存'],
+    busy: ['busy', '正在保存', '请稍候'],
+    err: ['err', '保存失败', '请检查网络或连接'],
     local: ['local', '未登录', '请连接数据服务'],
-    init: ['busy', '加载中', host],
+    init: ['busy', '加载中', '请稍候'],
   };
   const [cls, label, sub] = map[state.sync] || map.init;
   return `<button class="sync-pill ${cls}" data-act="syncReload" title="点击从云端拉取最新数据">
