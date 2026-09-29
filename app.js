@@ -1277,6 +1277,15 @@ const ACTIONS = {
   scrim: (id, el, e) => { if (e.target === el) closeModal(); },
   openThemes: () => themeModal(),
   setPalette: (id, el) => { applyPalette(el.dataset.paletteId); closeModal(); renderAll(); },
+  togglePassword: (id, el) => {
+    const input = document.getElementById(el.dataset.target);
+    if (!input) return;
+    const show = input.type === 'password';
+    input.type = show ? 'text' : 'password';
+    el.innerHTML = ic(show ? 'eyeOff' : 'eye');
+    el.setAttribute('aria-label', show ? '隐藏密码' : '显示密码');
+    input.focus();
+  },
   openSettings: () => settingsModal(),
   syncNow: async (id, el) => {
     if (!state.apiBase || !state.apiToken) { toast('请先登录数据服务', 'err'); showGate(); return; }
@@ -1418,7 +1427,7 @@ function settingsModal() {
       <div class="field"><label>图库根目录</label><input class="input" name="galleryRoot" value="${esc(state.galleryRoot)}" placeholder="images"></div>
       <div class="field"><label>上传子目录</label><input class="input" name="galleryFolder" value="${esc(state.galleryFolder)}" placeholder="uploads"></div>
       <div class="field full"><label>图库 GitHub Token</label>
-        <input class="input" name="galleryToken" type="password" value="${esc(state.galleryToken)}" placeholder="fine-grained Token，仅授予图库仓库 Contents 读写" autocomplete="off">
+        <div class="password-field"><input class="input" id="settings-gallery-token" name="galleryToken" type="password" value="${esc(state.galleryToken)}" placeholder="fine-grained Token，仅授予图库仓库 Contents 读写" autocomplete="off"><button class="password-toggle" type="button" data-act="togglePassword" data-target="settings-gallery-token" aria-label="显示密码">${ic('eye')}</button></div>
         <span class="hint">保存在本机浏览器，只需配置一次；不要把 Token 写进仓库。<a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">创建 fine-grained Token</a></span></div>
       <div class="field full"><label>飞书同步地址（Cloudflare Worker）</label>
         <input class="input" name="feishu" value="${esc(state.feishuUrl)}" placeholder="https://你的-worker.workers.dev">
@@ -1572,7 +1581,7 @@ function showGate(message = '') {
       <div class="gate-mark">工</div>
       <div class="gate-title">NickWork</div>
       <div class="gate-sub">${esc(message || '私有工作台 · 连接云端数据')}</div>
-      <input class="input" id="gate-pass" type="password" placeholder="访问密码" autocomplete="current-password">
+      <div class="password-field"><input class="input" id="gate-pass" type="password" placeholder="访问密码" autocomplete="current-password"><button class="password-toggle" type="button" data-act="togglePassword" data-target="gate-pass" aria-label="显示密码">${ic('eye')}</button></div>
       <button class="btn ghost gate-cf" id="gate-cf-toggle" type="button" aria-expanded="false">${ic('globe')}<span>Cloudflare 设置</span></button>
       <div class="gate-api-field" id="gate-api-field" hidden>
         <input class="input" id="gate-api" type="url" value="${esc(state.apiBase)}" placeholder="数据服务地址 https://xxx.workers.dev" autocomplete="url">
