@@ -564,6 +564,22 @@ td.num-cell { font-variant-numeric: tabular-nums; }
 .download-history-item small { color: var(--text-3); font-size: 11px; }
 
 /* ---------- 图库 ---------- */
+.gallery-upload-status { display: flex; align-items: center; gap: 9px; padding: 13px 15px; margin-bottom: 14px; color: var(--accent); font-size: 13px; }
+.gallery-upload-status svg { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.upload-drop {
+  min-height: 170px; border: 1.5px dashed var(--border-strong); border-radius: 16px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  color: var(--text-2); cursor: pointer; text-align: center; transition: border-color .15s ease, background .15s ease;
+}
+.upload-drop:hover, .upload-drop.dragging { border-color: var(--accent); background: var(--surface-2); }
+.upload-drop-icon { width: 42px; height: 42px; border-radius: 14px; background: var(--surface-2); display: grid; place-items: center; color: var(--accent); margin-bottom: 2px; }
+.upload-drop small { color: var(--text-3); font-size: 11.5px; }
+.gallery-upload-files { margin-top: 12px; max-height: 170px; overflow: auto; }
+.gallery-upload-file { display: flex; justify-content: space-between; gap: 12px; padding: 7px 2px; border-top: 1px solid var(--border); font-size: 12.5px; }
+.gallery-upload-file:first-child { border-top: none; }
+.gallery-upload-file span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gallery-upload-file small { color: var(--text-3); flex: none; }
 .gallery-folders { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
 .gallery-folder { display: block; border-radius: var(--r-card); overflow: hidden; color: inherit; transition: transform .14s ease, box-shadow .14s ease; }
 .gallery-folder:hover { transform: translateY(-2px); box-shadow: var(--shadow-hover); text-decoration: none; }

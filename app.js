@@ -81,6 +81,12 @@ const state = {
   downloadUrl: localStorage.getItem('wb_download_url') || '',
   downloadToken: sessionStorage.getItem('wb_download_token') || '',
   mediaMode: localStorage.getItem('wb_media_mode') || 'cobalt',
+  galleryRepo: localStorage.getItem('wb_gallery_repo') || 'Nick-Job/boomb',
+  galleryBranch: localStorage.getItem('wb_gallery_branch') || 'main',
+  galleryRoot: localStorage.getItem('wb_gallery_root') || 'images',
+  galleryFolder: localStorage.getItem('wb_gallery_folder') || 'uploads',
+  galleryToken: sessionStorage.getItem('wb_gallery_token') || '',
+  galleryUploading: false, galleryProgress: '',
   downloadInput: '', downloadResult: null, downloadBusy: false, downloadError: '',
   downloadHistory: (() => {
     try { const v = JSON.parse(localStorage.getItem('wb_download_history') || '[]'); return Array.isArray(v) ? v : []; }
@@ -97,14 +103,130 @@ const state = {
   cal: (() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() }; })(),
   showHidden: false,
 };
-function repoCfg() {
-  const h = location.hostname;
-  if (h.endsWith('.github.io')) {
-    const o = h.slice(0, -10);
-    return { owner: o, repo: o + '.github.io' };
+function galleryCfg() {
+  const parts = String(state.galleryRepo || '').trim().replace(/^https?:\/\/github\.com\//, '').replace(/\.git$/, '').split('/').filter(Boolean);
+  return {
+    owner: parts[0] || '',
+    repo: parts[1] || '',
+    branch: String(state.galleryBranch || 'main').trim() || 'main',
+    root: String(state.galleryRoot || 'images').replace(/^\/+|\/+$/g, ''),
+    folder: String(state.galleryFolder || 'uploads').replace(/^\/+|\/+$/g, ''),
+  };
+}
+async function galleryApi(path, options = {}) {
+  const headers = { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', ...(options.headers || {}) };
+  if (state.galleryToken) headers.Authorization = 'Bearer ' + state.galleryToken;
+  const res = await fetch('https://api.github.com' + path, { ...options, headers });
+  const text = await res.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch (e) {}
+  if (!res.ok) {
+    const err = new Error((data && data.message) || `GitHub API ${res.status}`);
+    err.status = res.status;
+    throw err;
   }
-  try { const s = JSON.parse(localStorage.getItem('wb_repo') || 'null'); if (s && s.owner && s.repo) return s; } catch (e) {}
-  return { owner: 'Nick-Job', repo: 'nick-job.github.io' };
+  return data;
+}
+function bytesToBase64(bytes) {
+  let text = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) text += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  return btoa(text);
+}
+function encodeGitPath(path) { return path.split('/').map(encodeURIComponent).join('/'); }
+function safeUploadName(name) {
+  const value = String(name || 'image');
+  const dot = value.lastIndexOf('.');
+  const ext = dot >= 0 ? value.slice(dot).toLowerCase().replace(/[^a-z0-9.]/g, '') : '';
+  const base = (dot >= 0 ? value.slice(0, dot) : value).normalize('NFKC').replace(/[\\/:*?"<>|\s]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').slice(0, 120) || 'image';
+  return base + ext;
+}
+function safeFolder(name) {
+  return String(name || '').replace(/\\/g, '/').split('/').map((part) => part.normalize('NFKC').replace(/[\\/:*?"<>|]+/g, '-').replace(/^\.+$/, '').trim()).filter(Boolean).slice(0, 4).join('/');
+}
+async function loadGalleryFromGitHub() {
+  const cfg = galleryCfg();
+  if (!cfg.owner || !cfg.repo) throw new Error('还没有配置图片仓库');
+  const tree = await galleryApi(`/repos/${cfg.owner}/${cfg.repo}/git/trees/${encodeURIComponent(cfg.branch)}?recursive=1`);
+  const prefix = cfg.root ? cfg.root + '/' : '';
+  const images = (tree.tree || [])
+    .filter((item) => item.type === 'blob' && (!prefix || item.path.startsWith(prefix)) && /\.(jpe?g|png|gif|webp|avif|svg|bmp)$/i.test(item.path))
+    .map((item) => {
+      const relative = prefix ? item.path.slice(prefix.length) : item.path;
+      const parts = relative.split('/');
+      return {
+        name: parts[parts.length - 1],
+        path: item.path,
+        group: parts.length > 1 ? parts[0] : '未分组',
+        size: item.size || 0,
+        url: `https://raw.githubusercontent.com/${cfg.owner}/${cfg.repo}/${encodeURIComponent(cfg.branch)}/${encodeGitPath(item.path)}`,
+      };
+    })
+    .sort((a, b) => b.path.localeCompare(a.path));
+  const groups = new Map();
+  for (const image of images) {
+    if (!groups.has(image.group)) groups.set(image.group, []);
+    groups.get(image.group).push(image);
+  }
+  const data = { owner: cfg.owner, repo: cfg.repo, branch: cfg.branch, total: images.length, folders: [...groups].map(([name, items]) => ({ name, images: items })) };
+  state.db.gallery = data;
+  localStorage.setItem('wb_cache_gallery', JSON.stringify(data));
+  return data;
+}
+async function uploadGalleryFiles(files, folder) {
+  const cfg = galleryCfg();
+  if (!cfg.owner || !cfg.repo) throw new Error('还没有配置图片仓库');
+  if (!state.galleryToken) throw new Error('还没有配置图库 GitHub Token');
+  const list = [...files].filter(Boolean);
+  if (!list.length) throw new Error('请先选择图片');
+  if (list.length > 10) throw new Error('一次最多上传 10 张图片');
+  if (list.reduce((sum, file) => sum + file.size, 0) > 40 * 1024 * 1024) throw new Error('一批图片总大小不能超过 40 MB');
+  for (const file of list) {
+    if (!file.type.startsWith('image/')) throw new Error(`${file.name} 不是图片文件`);
+    if (file.size > 25 * 1024 * 1024) throw new Error(`${file.name} 超过 25 MB`);
+  }
+  state.galleryUploading = true;
+  const ref = await galleryApi(`/repos/${cfg.owner}/${cfg.repo}/git/ref/heads/${encodeURIComponent(cfg.branch)}`);
+  const parentSha = ref.object.sha;
+  const parent = await galleryApi(`/repos/${cfg.owner}/${cfg.repo}/git/commits/${parentSha}`);
+  const entries = [];
+  const stamp = Date.now().toString(36);
+  for (let i = 0; i < list.length; i++) {
+    const file = list[i];
+    state.galleryProgress = `正在读取 ${i + 1}/${list.length}`;
+    renderView();
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    state.galleryProgress = `正在上传 ${i + 1}/${list.length}`;
+    renderView();
+    const blob = await galleryApi(`/repos/${cfg.owner}/${cfg.repo}/git/blobs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: bytesToBase64(bytes), encoding: 'base64' }),
+    });
+    const filename = `${stamp}-${i + 1}-${safeUploadName(file.name)}`;
+    const path = [cfg.root, safeFolder(folder || cfg.folder), filename].filter(Boolean).join('/');
+    entries.push({ path, mode: '100644', type: 'blob', sha: blob.sha });
+  }
+  state.galleryProgress = '正在创建提交';
+  renderView();
+  const tree = await galleryApi(`/repos/${cfg.owner}/${cfg.repo}/git/trees`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ base_tree: parent.tree.sha, tree: entries }),
+  });
+  const commit = await galleryApi(`/repos/${cfg.owner}/${cfg.repo}/git/commits`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: `上传 ${list.length} 张图片`, tree: tree.sha, parents: [parentSha] }),
+  });
+  await galleryApi(`/repos/${cfg.owner}/${cfg.repo}/git/refs/heads/${encodeURIComponent(cfg.branch)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sha: commit.sha, force: false }),
+  });
+  state.galleryUploading = false;
+  state.galleryProgress = '';
+  return { count: list.length, commit: commit.sha };
 }
 
 /* ---------- Cloudflare Worker + D1 同步 ---------- */
@@ -217,9 +339,7 @@ async function loadAll() {
   }
   let galleryOk = false;
   try {
-    const gallery = await fetchStaticData('gallery');
-    state.db.gallery = gallery;
-    localStorage.setItem('wb_cache_gallery', JSON.stringify(gallery));
+    await loadGalleryFromGitHub();
     galleryOk = true;
   } catch (e) { galleryOk = await loadLocalData('gallery'); }
   state.offline = !remoteOk || !galleryOk;
@@ -1164,24 +1284,82 @@ function viewDownload() {
 function viewGallery() {
   const folders = state.db.gallery?.folders || [];
   const total = folders.reduce((n, f) => n + f.images.length, 0);
+  const cfg = galleryCfg();
   const cur = state.route.view && state.route.view !== 'main' ? state.route.view : null;
   if (cur) {
     const f = folders.find((x) => x.name === cur);
     if (f) {
-      return head(f.name, `${f.images.length} 张图 · 来自仓库 gallery/${f.name}/`, `<a class="btn ghost" href="#/gallery">${ic('chevL')}返回素材图库</a>`) + `
+      const source = [cfg.repo, cfg.root, f.name].filter(Boolean).join('/');
+      return head(f.name, `${f.images.length} 张图 · 来自仓库 ${source}`, `<a class="btn ghost" href="#/gallery">${ic('chevL')}返回素材图库</a>`) + `
         <div class="gallery-grid">${f.images.map((src, i) => `
           <button class="g-img" data-act="openLb" data-folder="${esc(f.name)}" data-i="${i}" aria-label="查看大图">
             <img src="${esc(src)}" loading="lazy" alt="">
           </button>`).join('')}</div>`;
     }
   }
-  return head('素材图库', folders.length ? `${folders.length} 个文件夹，共 ${total} 张图` : '图片存在仓库 gallery/ 文件夹里', ` <a class="btn ghost" href="https://github.com/${esc(repoCfg().owner)}/${esc(repoCfg().repo)}/upload/main/gallery/" target="_blank" rel="noopener">${ic('plus')}上传图片</a>`) + `
+  const uploadButton = `<button class="btn primary" data-act="galleryUpload" ${state.galleryUploading ? 'disabled' : ''}>${ic('plus')}${state.galleryUploading ? '上传中…' : '上传图片'}</button>`;
+  return head('素材图库', folders.length ? `${folders.length} 个文件夹，共 ${total} 张图` : '图片来自你的 GitHub 图床仓库', uploadButton) + `
+    ${state.galleryUploading ? `<div class="panel gallery-upload-status">${ic('refresh')}<span>${esc(state.galleryProgress || '正在上传')}</span></div>` : ''}
     ${folders.length ? `<div class="gallery-folders">${folders.map((f) => `
       <a class="panel gallery-folder" href="#/gallery/${encodeURIComponent(f.name)}">
         <img class="gf-cover" src="${esc(f.images[0])}" alt="${esc(f.name)}" loading="lazy">
         <div class="gf-info"><div class="gf-name">${esc(f.name)}</div><div class="gf-cnt num">${f.images.length} 张</div></div>
       </a>`).join('')}</div>`
-      : `<div class="panel">${emptyHTML('image', '素材图库还是空的', '在仓库的 gallery/ 下新建文件夹并上传图片（GitHub 网页可直接拖拽上传），页面会自动显示。')}</div>`}`;
+      : `<div class="panel">${emptyHTML('image', '素材图库还是空的', '点击右上角「上传图片」，图片会保存到你的 GitHub 图床仓库。')}</div>`}`;
+}
+function galleryUploadModal() {
+  if (!state.galleryToken) {
+    toast('先配置图库仓库和 GitHub Token', 'err');
+    settingsModal();
+    return;
+  }
+  const cfg = galleryCfg();
+  openModal({
+    title: '上传图片到图库',
+    body: `<form id="gallery-upload-form">
+      <label class="upload-drop" id="gallery-drop">
+        <input type="file" id="gallery-file-input" accept="image/*" multiple hidden>
+        <span class="upload-drop-icon">${ic('plus')}</span>
+        <b>点击选择或拖入图片</b>
+        <small>最多 10 张，单张 25 MB，总计 40 MB</small>
+      </label>
+      <div class="form-grid" style="margin-top:14px">
+        <div class="field full"><label>上传到仓库</label><input class="input" value="${esc(cfg.owner + '/' + cfg.repo)}" disabled></div>
+        <div class="field full"><label>子目录</label><input class="input" name="folder" value="${esc(state.galleryFolder)}" placeholder="uploads"></div>
+      </div>
+      <div class="gallery-upload-files" id="gallery-upload-files"></div>
+    </form>`,
+    foot: `<button class="btn ghost" data-act="closeModal">取消</button><button class="btn primary" id="gallery-upload-go" type="button" disabled>开始上传</button>`,
+  });
+  let files = [];
+  const input = $('#gallery-file-input');
+  const drop = $('#gallery-drop');
+  const list = $('#gallery-upload-files');
+  const button = $('#gallery-upload-go');
+  const setFiles = (next) => {
+    files = [...next].filter((file) => file.type.startsWith('image/')).slice(0, 10);
+    list.innerHTML = files.length ? files.map((file) => `<div class="gallery-upload-file"><span>${esc(file.name)}</span><small>${formatBytes(file.size)}</small></div>`).join('') : '';
+    button.disabled = !files.length;
+    button.textContent = files.length ? `上传 ${files.length} 张` : '开始上传';
+  };
+  input.addEventListener('change', () => setFiles(input.files));
+  drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('dragging'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('dragging'));
+  drop.addEventListener('drop', (e) => { e.preventDefault(); drop.classList.remove('dragging'); setFiles(e.dataTransfer.files); });
+  button.addEventListener('click', async () => {
+    const folder = $('#gallery-upload-form').folder.value || state.galleryFolder;
+    closeModal();
+    state.galleryUploading = true; state.galleryProgress = '准备上传'; renderView();
+    try {
+      const result = await uploadGalleryFiles(files, folder);
+      await loadGalleryFromGitHub();
+      toast(`已上传 ${result.count} 张图片`);
+    } catch (e) {
+      toast('上传失败：' + e.message, 'err');
+    } finally {
+      state.galleryUploading = false; state.galleryProgress = ''; renderAll();
+    }
+  });
 }
 function openLightbox(folderName, i) {
   const f = (state.db.gallery?.folders || []).find((x) => x.name === folderName);
@@ -1364,6 +1542,7 @@ const ACTIONS = {
     toast('已清空最近解析');
   },
   /* 图库 */
+  galleryUpload: () => galleryUploadModal(),
   openLb: (id, el) => openLightbox(el.dataset.folder, +el.dataset.i),
   lbHold: () => {},
   closeLb: () => closeLightbox(),
@@ -1393,15 +1572,20 @@ function closeSide() { $('#sidebar').classList.remove('open'); $('#scrim').hidde
 
 /* ---------- 设置 ---------- */
 function settingsModal() {
-  const cfg = repoCfg();
   openModal({
     title: '设置',
     body: `<form id="settings-form"><div class="form-grid">
       <div class="field full"><label>数据服务地址（Cloudflare Worker）</label>
         <input class="input" name="api" value="${esc(state.apiBase)}" placeholder="https://nickwork-api.你的子域.workers.dev">
         <span class="hint">数据保存在 D1；浏览器只保存登录令牌和离线缓存。更换地址后需要重新输入访问密码。</span></div>
-      <div class="field"><label>仓库 Owner</label><input class="input" name="owner" value="${esc(cfg.owner)}"></div>
-      <div class="field"><label>仓库名</label><input class="input" name="repo" value="${esc(cfg.repo)}"></div>
+      <div class="field full"><label>图库仓库（owner/repo）</label>
+        <input class="input" name="galleryRepo" value="${esc(state.galleryRepo)}" placeholder="YOUR_NAME/IMAGE_REPOSITORY"></div>
+      <div class="field"><label>图库分支</label><input class="input" name="galleryBranch" value="${esc(state.galleryBranch)}" placeholder="main"></div>
+      <div class="field"><label>图库根目录</label><input class="input" name="galleryRoot" value="${esc(state.galleryRoot)}" placeholder="images"></div>
+      <div class="field"><label>上传子目录</label><input class="input" name="galleryFolder" value="${esc(state.galleryFolder)}" placeholder="uploads"></div>
+      <div class="field full"><label>图库 GitHub Token</label>
+        <input class="input" name="galleryToken" type="password" value="${esc(state.galleryToken)}" placeholder="fine-grained Token，仅授予图库仓库 Contents 读写" autocomplete="off">
+        <span class="hint">只保存在当前浏览器标签页；关闭标签页后需要重新填写。不要把 Token 写进仓库。<a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">创建 fine-grained Token</a></span></div>
       <div class="field full"><label>飞书同步地址（Cloudflare Worker）</label>
         <input class="input" name="feishu" value="${esc(state.feishuUrl)}" placeholder="https://你的-worker.workers.dev">
         <span class="hint">填好 Worker 后，选题中枢会出现「从飞书同步」按钮。Worker 部署方法见仓库 worker/ 目录的说明。</span></div>
@@ -1416,7 +1600,7 @@ function settingsModal() {
       <button class="btn ghost" id="st-test">测试连接</button>
       <button class="btn primary" type="submit" form="settings-form">保存</button>`,
   });
-  $('#settings-form').addEventListener('submit', (e) => {
+  $('#settings-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const f = Object.fromEntries(new FormData(e.target).entries());
     const nextBase = normalizeApiBase(f.api);
@@ -1428,9 +1612,19 @@ function settingsModal() {
     state.downloadToken = (f.downloadToken || '').trim();
     state.downloadUrl ? localStorage.setItem('wb_download_url', state.downloadUrl) : localStorage.removeItem('wb_download_url');
     state.downloadToken ? sessionStorage.setItem('wb_download_token', state.downloadToken) : sessionStorage.removeItem('wb_download_token');
-    localStorage.setItem('wb_repo', JSON.stringify({ owner: f.owner.trim(), repo: f.repo.trim() }));
+    state.galleryRepo = (f.galleryRepo || '').trim().replace(/^https?:\/\/github\.com\//, '').replace(/\.git$/, '');
+    state.galleryBranch = (f.galleryBranch || 'main').trim() || 'main';
+    state.galleryRoot = (f.galleryRoot || '').trim().replace(/^\/+|\/+$/g, '');
+    state.galleryFolder = (f.galleryFolder || 'uploads').trim().replace(/^\/+|\/+$/g, '');
+    state.galleryToken = (f.galleryToken || '').trim();
+    localStorage.setItem('wb_gallery_repo', state.galleryRepo);
+    localStorage.setItem('wb_gallery_branch', state.galleryBranch);
+    localStorage.setItem('wb_gallery_root', state.galleryRoot);
+    localStorage.setItem('wb_gallery_folder', state.galleryFolder);
+    state.galleryToken ? sessionStorage.setItem('wb_gallery_token', state.galleryToken) : sessionStorage.removeItem('wb_gallery_token');
     closeModal(); renderAll();
     if (!nextBase || changed) { showGate('数据服务地址已更新，请重新登录'); return; }
+    try { await loadGalleryFromGitHub(); renderView(); } catch (err) { toast('图库连接失败：' + err.message, 'err'); }
     toast('设置已保存');
   });
   $('#st-test').addEventListener('click', async () => {

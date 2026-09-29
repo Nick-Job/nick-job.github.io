@@ -156,12 +156,42 @@ openssl rand -hex 32
 
 ## 素材图库
 
-图库仍从仓库读取，不进入 D1：
+图库读取和上传都使用独立的 GitHub 图床仓库，不进入 D1。当前默认仓库为：
 
-1. 在 GitHub 仓库的 `gallery/` 下新建文件夹
-2. 上传图片
-3. GitHub Action 自动更新 `gallery/index.json`
-4. 网页图库会显示新图片
+```text
+Nick-Job/boomb
+```
+
+在设置中填写：
+
+```text
+图库仓库：Nick-Job/boomb
+分支：main
+图库根目录：images
+上传子目录：uploads
+图库 GitHub Token：fine-grained Token
+```
+
+Token 只授予 `Nick-Job/boomb` 的 `Contents: Read and write` 权限，仅保存在当前浏览器标签页，关闭标签页后清除。
+
+素材图库的上传流程：
+
+```text
+浏览器 → GitHub API → boomb 仓库
+```
+
+多张图片会合并成一个 Git commit，默认写入：
+
+```text
+images/uploads/
+```
+
+图库仍不进入 D1：
+
+1. 打开「素材图库」。
+2. 点击「上传图片」。
+3. 选择或拖入图片。
+4. 上传完成后页面自动刷新图库列表。
 
 ## 飞书同步（可选）
 
