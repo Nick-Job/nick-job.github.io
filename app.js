@@ -65,6 +65,7 @@ const ICONS = {
   eye: '<path d="M3.2 10c1.9-3.1 4.1-4.6 6.8-4.6s4.9 1.5 6.8 4.6c-1.9 3.1-4.1 4.6-6.8 4.6S5.1 13.1 3.2 10z"/><circle cx="10" cy="10" r="2.3"/>',
   eyeOff: '<path d="M3.2 10c1.9-3.1 4.1-4.6 6.8-4.6 1.2 0 2.3.3 3.4.8M16.8 10c-.7 1.2-1.5 2.2-2.4 3M12.9 14.2c-.9.3-1.9.4-2.9.4-2.7 0-4.9-1.5-6.8-4.6.5-.8 1-1.5 1.6-2.1"/><line x1="4.2" y1="16" x2="15.8" y2="4.4"/>',
   image: '<rect x="3" y="4.5" width="14" height="11" rx="2"/><circle cx="7.2" cy="8.3" r="1.3"/><path d="M3.5 13.6l3.4-3 3 2.6 3.6-3.6 3 2.6"/>',
+  palette: '<path d="M10 17.8a8 8 0 1 1 8-7.2 4 4 0 0 1-4 4h-1.8a1.4 1.4 0 0 0-1.1 2.2l.2.3a1.4 1.4 0 0 1-1.1 2.2z"/><circle cx="11.2" cy="5.4" r=".5" fill="currentColor"/><circle cx="14.5" cy="8.6" r=".5" fill="currentColor"/><circle cx="5.4" cy="10.2" r=".5" fill="currentColor"/><circle cx="7" cy="6.2" r=".5" fill="currentColor"/>',
 };
 const ic = (n, cls = 'ic') => `<svg class="${cls}" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[n] || ''}</svg>`;
 
@@ -436,9 +437,61 @@ function confirmDlg(msg, onOk) {
 }
 
 /* ---------- 主题 ---------- */
+const THEME_DEFS = [
+  { id: 'retro-blue', label: 'Retro Blue', desc: 'Default palette', swatches: ['#2d6dc3', '#8fb9ff', '#fad13b'], light: { bg: '#fdfaf5', surface: '#ffffff', surface2: '#faf9f5', text: '#2d6dc3', text2: '#3f4a5a', text3: '#7a6550', primary: '#2d6dc3', primaryHover: '#0066ff', soft: '#faf9f5', onPrimary: '#ffffff' }, dark: { bg: '#0b1220', surface: '#0f1b2d', surface2: '#101a2c', text: '#3884eb', text2: '#c5cedb', text3: '#9bb3d7', primary: '#3884eb', primaryHover: '#8fb9ff', soft: '#3884eb26', onPrimary: '#ffffff' } },
+  { id: 'minimal-mono', label: 'Minimal Mono', desc: 'Monochrome palette', swatches: ['#11110f', '#1a1917', '#d8d5cf'], light: { bg: '#fdfcfc', surface: '#ffffff', surface2: '#f5f3f1', text: '#1a1a1a', text2: '#57534f', text3: '#777169', primary: '#1a1a1a', primaryHover: '#333333', soft: '#f5f3f1', onPrimary: '#ffffff' }, dark: { bg: '#11110f', surface: '#1a1917', surface2: '#151411', text: '#f4f4f2', text2: '#d8d5cf', text3: '#aaa49b', primary: '#f4f4f2', primaryHover: '#ffffff', soft: '#f4f4f21f', onPrimary: '#11110f' } },
+  { id: 'forest-green', label: 'Forest Green', desc: 'Botanical palette', swatches: ['#4a7c59', '#8fba98', '#dce9d8'], light: { bg: '#f7f5f0', surface: '#ffffff', surface2: '#f5f2ee', text: '#2f6840', text2: '#33443a', text3: '#66736a', primary: '#4a7c59', primaryHover: '#356644', soft: '#eef5ea', onPrimary: '#ffffff' }, dark: { bg: '#0f1712', surface: '#162119', surface2: '#111c15', text: '#91c89d', text2: '#d5ded7', text3: '#9daf9f', primary: '#91c89d', primaryHover: '#b8ddb8', soft: '#91c89d26', onPrimary: '#0f1712' } },
+  { id: 'vellum-ink', label: 'Vellum Ink', desc: 'Warm vellum palette', swatches: ['#141413', '#1f1e1d', '#d97757'], light: { bg: '#faf9f5', surface: '#ffffff', surface2: '#f4f1ea', text: '#141413', text2: '#3d3d3a', text3: '#73726c', primary: '#141413', primaryHover: '#1f1e1d', soft: '#f1eee7', onPrimary: '#ffffff' }, dark: { bg: '#141413', surface: '#1f1e1d', surface2: '#191816', text: '#faf9f5', text2: '#dedcd1', text3: '#9c9a92', primary: '#faf9f5', primaryHover: '#ffffff', soft: '#faf9f51f', onPrimary: '#141413' } },
+  { id: 'creator-yellow', label: 'Creator Yellow', desc: 'Creator economy palette', swatches: ['#ffdd00', '#f7d046', '#d8573f'], light: { bg: '#e5e7eb', surface: '#ffffff', surface2: '#f3f4f6', text: '#222222', text2: '#414141', text3: '#717171', primary: '#ffdd00', primaryHover: '#f7d046', soft: '#fff6b8', onPrimary: '#000000' }, dark: { bg: '#171510', surface: '#222222', surface2: '#1f1c13', text: '#fff8d1', text2: '#f5f0c4', text3: '#c7bd78', primary: '#ffdd00', primaryHover: '#f7d046', soft: '#ffdd0026', onPrimary: '#000000' } },
+  { id: 'precision-orange', label: 'Precision Orange', desc: 'Technical neutral palette', swatches: ['#020202', '#3d3a39', '#ef6f2e'], light: { bg: '#eeeeee', surface: '#fafafa', surface2: '#f4f4f4', text: '#020202', text2: '#3d3a39', text3: '#756f6b', primary: '#020202', primaryHover: '#3d3a39', soft: '#e6e4e2', onPrimary: '#ffffff' }, dark: { bg: '#101010', surface: '#1a1817', surface2: '#171615', text: '#f2e8e2', text2: '#d8cbc3', text3: '#a49d9a', primary: '#ff9a62', primaryHover: '#ffb08a', soft: '#ff9a6226', onPrimary: '#101010' } },
+  { id: 'comic-pulp', label: 'Comic Pulp', desc: 'Soft comic palette', swatches: ['#6b5fb5', '#c8c1f0', '#f2dc4d'], light: { bg: '#fbf7ea', surface: '#fffdf5', surface2: '#f4efff', text: '#241c3d', text2: '#473f67', text3: '#806f4b', primary: '#f2dc4d', primaryHover: '#f6cc5f', soft: '#eeeaff', onPrimary: '#241c3d' }, dark: { bg: '#18152d', surface: '#252040', surface2: '#211c3a', text: '#f2dc4d', text2: '#f6f0d1', text3: '#c8c1f0', primary: '#f2dc4d', primaryHover: '#f6cc5f', soft: '#f2dc4d29', onPrimary: '#241c3d' } },
+  { id: 'midnight-pastel', label: 'Midnight Pastel', desc: 'Dark pastel palette', swatches: ['#000000', '#bbb2ce', '#e4b976'], light: { bg: '#f3f1ec', surface: '#ffffff', surface2: '#e5e6e1', text: '#453b60', text2: '#333333', text3: '#65451d', primary: '#65451d', primaryHover: '#453b60', soft: '#ebe7f3', onPrimary: '#ffffff' }, dark: { bg: '#000000', surface: '#121212', surface2: '#0b0b0b', text: '#bbb2ce', text2: '#ffffff', text3: '#e4b976', primary: '#bbb2ce', primaryHover: '#e4b976', soft: '#bbb2ce29', onPrimary: '#000000' } },
+];
+function themeById(id) { return THEME_DEFS.find((theme) => theme.id === id) || THEME_DEFS[0]; }
+function applyPalette(id) {
+  const theme = themeById(id);
+  const mode = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+  const p = theme[mode];
+  const root = document.documentElement;
+  root.dataset.palette = theme.id;
+  root.style.setProperty('--bg', p.bg);
+  root.style.setProperty('--surface', p.surface);
+  root.style.setProperty('--surface-2', p.surface2);
+  root.style.setProperty('--chip', p.surface2);
+  root.style.setProperty('--border', `color-mix(in srgb, ${p.text} 12%, ${p.surface})`);
+  root.style.setProperty('--border-strong', `color-mix(in srgb, ${p.text} 24%, ${p.surface})`);
+  root.style.setProperty('--text', p.text);
+  root.style.setProperty('--text-2', p.text2);
+  root.style.setProperty('--text-3', p.text3);
+  root.style.setProperty('--accent', p.primary);
+  root.style.setProperty('--accent-strong', p.primaryHover);
+  root.style.setProperty('--accent-soft', p.soft);
+  root.style.setProperty('--accent-text', p.primary);
+  root.style.setProperty('--on-accent', p.onPrimary);
+  localStorage.setItem('wb_palette', theme.id);
+}
+function themeModal() {
+  const current = themeById(localStorage.getItem('wb_palette') || 'retro-blue');
+  const dark = document.documentElement.dataset.theme === 'dark';
+  openModal({
+    title: '主题',
+    body: `<div class="theme-dialog-head">
+        <div><b>${esc(current.label)}</b><span>${esc(current.desc)}</span></div>
+        <button class="btn ghost" data-act="toggleTheme">${ic(dark ? 'sun' : 'moon')}${dark ? '浅色模式' : '深色模式'}</button>
+      </div>
+      <div class="theme-list">${THEME_DEFS.map((theme) => `
+        <button class="theme-option ${theme.id === current.id ? 'active' : ''}" data-act="setPalette" data-palette-id="${theme.id}">
+          <span class="theme-swatches">${theme.swatches.map((color) => `<i style="background:${color}"></i>`).join('')}</span>
+          <span class="theme-copy"><b>${esc(theme.label)}</b><small>${esc(theme.desc)}</small></span>
+          <span class="theme-selected">${theme.id === current.id ? ic('check') : ''}</span>
+        </button>`).join('')}</div>`,
+    foot: `<button class="btn primary" data-act="closeModal">完成</button>`,
+  });
+}
 function applyTheme(t) {
   document.documentElement.dataset.theme = t;
   localStorage.setItem('wb_theme', t);
+  applyPalette(localStorage.getItem('wb_palette') || 'retro-blue');
 }
 applyTheme(localStorage.getItem('wb_theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
 
@@ -504,7 +557,6 @@ function renderSidebar() {
       <span class="nv-count num">${c[m.mod]}</span>
     </button>`;
   }).join('');
-  const themeIcon = document.documentElement.dataset.theme === 'dark' ? 'sun' : 'moon';
   $('#sidebar').innerHTML = `
     <div class="brand"><div class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4.5" width="16" height="3.2" rx="1.6"/><rect x="4" y="16.3" width="16" height="3.2" rx="1.6"/><rect x="10.4" y="4.5" width="3.2" height="15" rx="1.6"/></svg></div>
       <div class="brand-name">NickWork</div>
@@ -514,7 +566,7 @@ function renderSidebar() {
       <button class="sync-now" data-act="syncNow">${ic('refresh')}<span>同步</span></button>
       ${syncInfo()}
       <div class="side-actions">
-        <button class="side-btn" data-act="toggleTheme">${ic(themeIcon)}<span>主题</span></button>
+        <button class="side-btn" data-act="openThemes">${ic('palette')}<span>主题</span></button>
         <button class="side-btn" data-act="openSettings">${ic('sliders')}<span>设置</span></button>
       </div>
     </div>`;
@@ -1219,10 +1271,12 @@ const ACTIONS = {
     else state.route.view = view;
     renderView(); renderSidebar();
   },
-  toggleTheme: () => { applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'); renderSidebar(); },
+  toggleTheme: () => { applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'); renderSidebar(); themeModal(); },
   openSide: () => { $('#sidebar').classList.add('open'); $('#scrim').hidden = false; },
   closeModal: () => closeModal(),
   scrim: (id, el, e) => { if (e.target === el) closeModal(); },
+  openThemes: () => themeModal(),
+  setPalette: (id, el) => { applyPalette(el.dataset.paletteId); closeModal(); renderAll(); },
   openSettings: () => settingsModal(),
   syncNow: async (id, el) => {
     if (!state.apiBase || !state.apiToken) { toast('请先登录数据服务', 'err'); showGate(); return; }
