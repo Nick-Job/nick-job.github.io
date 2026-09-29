@@ -144,6 +144,18 @@ function safeUploadName(name) {
 function safeFolder(name) {
   return String(name || '').replace(/\\/g, '/').split('/').map((part) => part.normalize('NFKC').replace(/[\\/:*?"<>|]+/g, '-').replace(/^\.+$/, '').trim()).filter(Boolean).slice(0, 4).join('/');
 }
+function persistGalleryConfig(values) {
+  state.galleryRepo = String(values.galleryRepo || '').trim().replace(/^https?:\/\/github\.com\//, '').replace(/\.git$/, '');
+  state.galleryBranch = String(values.galleryBranch || 'main').trim() || 'main';
+  state.galleryRoot = String(values.galleryRoot || '').trim().replace(/^\/+|\/+$/g, '');
+  state.galleryFolder = String(values.galleryFolder || 'uploads').trim().replace(/^\/+|\/+$/g, '');
+  state.galleryToken = String(values.galleryToken || '').trim();
+  localStorage.setItem('wb_gallery_repo', state.galleryRepo);
+  localStorage.setItem('wb_gallery_branch', state.galleryBranch);
+  localStorage.setItem('wb_gallery_root', state.galleryRoot);
+  localStorage.setItem('wb_gallery_folder', state.galleryFolder);
+  state.galleryToken ? sessionStorage.setItem('wb_gallery_token', state.galleryToken) : sessionStorage.removeItem('wb_gallery_token');
+}
 async function loadGalleryFromGitHub(force = false) {
   const cfg = galleryCfg();
   if (!cfg.owner || !cfg.repo) throw new Error('还没有配置图片仓库');
@@ -1312,12 +1324,29 @@ function viewGallery() {
       : `<div class="panel">${emptyHTML('image', '素材图库还是空的', '点击右上角「上传图片」，图片会保存到你的 GitHub 图床仓库。')}</div>`}`;
 }
 function galleryUploadModal() {
-  if (!state.galleryToken) {
-    toast('先配置图库仓库和 GitHub Token', 'err');
-    settingsModal();
+  const cfg = galleryCfg();
+  if (!state.galleryToken || !cfg.owner || !cfg.repo) {
+    openModal({
+      title: '配置素材图库上传',
+      body: `<form id="gallery-config-form" class="form-grid">
+        <div class="field full"><label>图库仓库（owner/repo）</label><input class="input" name="galleryRepo" value="${esc(state.galleryRepo)}" placeholder="YOUR_NAME/IMAGE_REPOSITORY" required></div>
+        <div class="field"><label>分支</label><input class="input" name="galleryBranch" value="${esc(state.galleryBranch)}" placeholder="main"></div>
+        <div class="field"><label>根目录</label><input class="input" name="galleryRoot" value="${esc(state.galleryRoot)}" placeholder="images"></div>
+        <div class="field"><label>上传子目录</label><input class="input" name="galleryFolder" value="${esc(state.galleryFolder)}" placeholder="uploads"></div>
+        <div class="field full"><label>GitHub Token</label><input class="input" name="galleryToken" type="password" value="${esc(state.galleryToken)}" placeholder="fine-grained Token" autocomplete="off" required>
+          <span class="hint">仅授予图库仓库 Contents 读写，只保存在当前标签页。<a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">创建 Token</a></span></div>
+      </form>`,
+      foot: `<button class="btn ghost" data-act="closeModal">取消</button><button class="btn primary" type="submit" form="gallery-config-form">保存并继续</button>`,
+    });
+    $('#gallery-config-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      persistGalleryConfig(Object.fromEntries(new FormData(e.target).entries()));
+      closeModal();
+      toast('图库上传配置已保存');
+      galleryUploadModal();
+    });
     return;
   }
-  const cfg = galleryCfg();
   openModal({
     title: '上传图片到图库',
     body: `<form id="gallery-upload-form">
@@ -1616,16 +1645,7 @@ function settingsModal() {
     state.downloadToken = (f.downloadToken || '').trim();
     state.downloadUrl ? localStorage.setItem('wb_download_url', state.downloadUrl) : localStorage.removeItem('wb_download_url');
     state.downloadToken ? sessionStorage.setItem('wb_download_token', state.downloadToken) : sessionStorage.removeItem('wb_download_token');
-    state.galleryRepo = (f.galleryRepo || '').trim().replace(/^https?:\/\/github\.com\//, '').replace(/\.git$/, '');
-    state.galleryBranch = (f.galleryBranch || 'main').trim() || 'main';
-    state.galleryRoot = (f.galleryRoot || '').trim().replace(/^\/+|\/+$/g, '');
-    state.galleryFolder = (f.galleryFolder || 'uploads').trim().replace(/^\/+|\/+$/g, '');
-    state.galleryToken = (f.galleryToken || '').trim();
-    localStorage.setItem('wb_gallery_repo', state.galleryRepo);
-    localStorage.setItem('wb_gallery_branch', state.galleryBranch);
-    localStorage.setItem('wb_gallery_root', state.galleryRoot);
-    localStorage.setItem('wb_gallery_folder', state.galleryFolder);
-    state.galleryToken ? sessionStorage.setItem('wb_gallery_token', state.galleryToken) : sessionStorage.removeItem('wb_gallery_token');
+    persistGalleryConfig(f);
     closeModal(); renderAll();
     if (!nextBase || changed) { showGate('数据服务地址已更新，请重新登录'); return; }
     try { await loadGalleryFromGitHub(true); renderView(); } catch (err) { toast('图库连接失败：' + err.message, 'err'); }
