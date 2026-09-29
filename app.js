@@ -162,7 +162,8 @@ async function loadGalleryFromGitHub(force = false) {
   if (!cfg.owner || !cfg.repo) throw new Error('还没有配置图片仓库');
   const cached = cachedData('gallery');
   const cachedAt = Number(localStorage.getItem('wb_gallery_cache_time') || 0);
-  if (!force && cached && Date.now() - cachedAt < 5 * 60 * 1000) { state.db.gallery = cached; return cached; }
+  const cacheValid = cached && Array.isArray(cached.folders) && cached.folders.every((folder) => Array.isArray(folder.images) && folder.images.every((image) => typeof image === 'string'));
+  if (!force && cacheValid && Date.now() - cachedAt < 5 * 60 * 1000) { state.db.gallery = cached; return cached; }
   const tree = await galleryApi(`/repos/${cfg.owner}/${cfg.repo}/git/trees/${encodeURIComponent(cfg.branch)}?recursive=1`);
   const prefix = cfg.root ? cfg.root + '/' : '';
   const images = (tree.tree || [])
