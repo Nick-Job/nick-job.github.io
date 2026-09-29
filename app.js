@@ -182,7 +182,7 @@ async function loadGalleryFromGitHub(force = false) {
   const groups = new Map();
   for (const image of images) {
     if (!groups.has(image.group)) groups.set(image.group, []);
-    groups.get(image.group).push(image);
+    groups.get(image.group).push(image.url);
   }
   const data = { owner: cfg.owner, repo: cfg.repo, branch: cfg.branch, total: images.length, folders: [...groups].map(([name, items]) => ({ name, images: items })) };
   state.db.gallery = data;
