@@ -1631,7 +1631,9 @@ function showGate(message = '') {
       root.remove();
       start();
     } catch (err) {
-      $('#gate-err').textContent = err.status === 401 ? '密码不对，再试试' : ('连接失败：' + err.message);
+      const detail = String(err.message || '');
+      const networkError = !err.status && /failed to fetch|network|load failed|fetch failed|连不上/i.test(detail);
+      $('#gate-err').textContent = err.status === 401 ? '密码不对，再试试' : (networkError ? '连接失败：当前网络无法访问 Cloudflare Worker，请换网络或检查 workers.dev' : ('连接失败：' + detail));
       $('#gate-pass').value = '';
       $('#gate-pass').focus();
       const card = root.querySelector('.gate-card');
