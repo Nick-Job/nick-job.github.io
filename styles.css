@@ -531,6 +531,10 @@ td.num-cell { font-variant-numeric: tabular-nums; }
 .download-form .input { font-size: 14px; padding: 11px 14px; }
 .download-hints { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 11px; }
 .download-hints .link-tag { color: var(--text-3); }
+.download-sites { margin-top: 14px; padding: 16px 17px; }
+.download-site-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 9px; }
+.download-site-btn { justify-content: flex-start; min-width: 0; }
+.download-site-btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .download-setup { margin-top: 14px; padding: 17px 18px; border: 1px dashed var(--border-strong); box-shadow: none; }
 .download-desc { color: var(--text-2); font-size: 13px; line-height: 1.65; margin: 0 0 12px; }
 .download-desc code { background: var(--surface-2); border-radius: 6px; padding: 2px 5px; }

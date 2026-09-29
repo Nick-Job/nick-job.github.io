@@ -30,6 +30,18 @@ Cloudflare D1（数据库 nickwork）
 
 侧边栏「媒体下载」默认使用 Cobalt 在线解析。浏览器只请求你的 Cloudflare Worker，由 Worker 携带密钥转发到 Cobalt，因此不需要额外服务器，也不会把 Cobalt API Key 暴露到前端。
 
+如果不使用 Cobalt API，也可以在设置中添加第三方在线下载站点。每行一个：
+
+```text
+站点名称|https://example.com/?url={url}
+```
+
+- `{url}` 会替换成 URL 编码后的媒体链接。
+- `{raw}` 会替换成原始媒体链接。
+- 媒体下载页会为每个站点生成一个按钮，点击后用新标签打开。
+
+大多数下载网站会通过 `X-Frame-Options` 或 CSP 禁止 iframe 嵌入，所以使用新标签打开比“把整个网站嵌进页面”更可靠。
+
 在 Worker 中添加变量：
 
 ```text

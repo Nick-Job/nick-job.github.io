@@ -87,6 +87,10 @@ const state = {
   galleryFolder: localStorage.getItem('wb_gallery_folder') || 'uploads',
   galleryToken: localStorage.getItem('wb_gallery_token') || sessionStorage.getItem('wb_gallery_token') || '',
   galleryUploading: false, galleryProgress: '',
+  downloadSites: (() => {
+    try { const v = JSON.parse(localStorage.getItem('wb_download_sites') || '[]'); return Array.isArray(v) ? v : []; }
+    catch (e) { return []; }
+  })(),
   downloadInput: '', downloadResult: null, downloadBusy: false, downloadError: '',
   downloadHistory: (() => {
     try { const v = JSON.parse(localStorage.getItem('wb_download_history') || '[]'); return Array.isArray(v) ? v : []; }
@@ -1112,6 +1116,20 @@ function formatBytes(n) {
   while (value >= 1024 && i < units.length - 1) { value /= 1024; i++; }
   return `${value.toFixed(i ? 1 : 0)} ${units[i]}`;
 }
+function parseDownloadSites(text) {
+  return String(text || '').split('\n').map((line) => {
+    const [name, ...rest] = line.split('|');
+    const template = rest.join('|').trim();
+    return { name: (name || '').trim(), template };
+  }).filter((item) => item.name && /^https?:\/\//i.test(item.template)).slice(0, 20);
+}
+function openDownloadSite(site) {
+  const url = state.downloadInput.trim();
+  if (!url) { toast('先粘贴要下载的媒体链接', 'err'); return; }
+  if (!site || !site.template) return;
+  const target = site.template.replace(/\{url\}/g, encodeURIComponent(url)).replace(/\{raw\}/g, url);
+  window.open(target, '_blank', 'noopener,noreferrer');
+}
 function saveDownloadHistory(item) {
   const row = { url: item.url || item.webpage_url, title: item.title || '未命名媒体', platform: item.platform || detectPlatform(item.url || item.webpage_url || ''), thumbnail: item.thumbnail || '', created: new Date().toISOString() };
   state.downloadHistory = [row, ...state.downloadHistory.filter((x) => x.url !== row.url)].slice(0, 20);
@@ -1253,6 +1271,12 @@ function viewDownload() {
         <button class="btn primary" type="submit" ${state.downloadBusy ? 'disabled' : ''}>${ic('download')}${state.downloadBusy ? '解析中…' : '解析'}</button>
       </form>
       <div class="download-hints"><span class="link-tag">${ic('globe')}${isCobalt ? '由 Cobalt 在线解析' : '平台由本地 yt-dlp 解析'}</span><span class="link-tag">${ic('image')}支持图片与视频直链</span><span class="link-tag">${ic('alert')}请仅下载你有权使用的内容</span></div>
+    </div>
+    <div class="panel download-sites">
+      <div class="section-title">${ic('external')}在线下载站点 <button class="btn sm ghost" data-act="openSettings" style="margin-left:auto">管理站点</button></div>
+      ${state.downloadSites.length ? `<div class="download-site-grid">${state.downloadSites.map((site, i) => `
+        <button class="btn ghost download-site-btn" data-act="openDownloadSite" data-i="${i}">${ic('external')}<span>${esc(site.name)}</span></button>`).join('')}</div>`
+        : `<div class="download-desc">还没有配置在线站点。进入设置，每行粘贴一个：<br><code>站点名称|https://example.com/?url={url}</code></div>`}
     </div>
     ${!isCobalt && !configured ? `<div class="panel download-setup">
       <div class="section-title">${ic('sliders')}连接下载服务</div>
@@ -1546,6 +1570,7 @@ const ACTIONS = {
     const item = state.downloadResult?.mediaItems?.[+el.dataset.i];
     if (item?.url) directDownload(item.url, item.filename || '');
   },
+  openDownloadSite: (id, el) => openDownloadSite(state.downloadSites[+el.dataset.i]),
   downloadMedia: (id, el) => downloadMedia(el.dataset.format || 'best'),
   downloadAgain: (id, el) => {
     const item = state.downloadHistory[+el.dataset.i];
@@ -1612,6 +1637,9 @@ function settingsModal() {
         <span class="hint">Cobalt 在线模式由 Worker 的 COBALT_API_URL / COBALT_API_KEY 配置；这里只配置本地 yt-dlp 备用服务。</span></div>
       <div class="field full"><label>下载服务令牌（可选）</label>
         <input class="input" name="downloadToken" type="password" value="${esc(state.downloadToken)}" placeholder="公共 HTTPS 部署时建议设置" autocomplete="off"></div>
+      <div class="field full"><label>在线下载站点</label>
+        <textarea class="textarea" name="downloadSites" rows="5" placeholder="Cobalt 网页|https://cobalt.tools/?url={url}&#10;站点名称|https://example.com/?url={url}">${esc(state.downloadSites.map((site) => `${site.name}|${site.template}`).join('\n'))}</textarea>
+        <span class="hint">每行一个：名称|网址模板。{url} 会替换成编码后的链接，{raw} 保留原始链接。</span></div>
       <div class="field full"><span class="hint">当前登录：${state.apiToken ? '当前标签页已登录，关闭标签页后需重新输入密码' : '未登录'}</span></div>
     </div></form>`,
     foot: `<button class="btn danger-ghost" id="st-clear" style="margin-right:auto">退出登录</button>
@@ -1630,6 +1658,8 @@ function settingsModal() {
     state.downloadToken = (f.downloadToken || '').trim();
     state.downloadUrl ? localStorage.setItem('wb_download_url', state.downloadUrl) : localStorage.removeItem('wb_download_url');
     state.downloadToken ? sessionStorage.setItem('wb_download_token', state.downloadToken) : sessionStorage.removeItem('wb_download_token');
+    state.downloadSites = parseDownloadSites(f.downloadSites);
+    localStorage.setItem('wb_download_sites', JSON.stringify(state.downloadSites));
     persistGalleryConfig(f);
     closeModal(); renderAll();
     if (!nextBase || changed) { showGate('数据服务地址已更新，请重新登录'); return; }
