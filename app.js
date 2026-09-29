@@ -80,6 +80,7 @@ const state = {
   feishuUrl: localStorage.getItem('wb_feishu_url') || '',
   downloadUrl: localStorage.getItem('wb_download_url') || '',
   downloadToken: sessionStorage.getItem('wb_download_token') || '',
+  mediaMode: localStorage.getItem('wb_media_mode') || 'cobalt',
   downloadInput: '', downloadResult: null, downloadBusy: false, downloadError: '',
   downloadHistory: (() => {
     try { const v = JSON.parse(localStorage.getItem('wb_download_history') || '[]'); return Array.isArray(v) ? v : []; }
@@ -978,6 +979,53 @@ function saveDownloadHistory(item) {
   state.downloadHistory = [row, ...state.downloadHistory.filter((x) => x.url !== row.url)].slice(0, 20);
   localStorage.setItem('wb_download_history', JSON.stringify(state.downloadHistory));
 }
+function normalizeCobalt(data, url) {
+  if (!data || data.status === 'error') {
+    const code = data?.error?.code || data?.error || '解析失败';
+    throw new Error(`Cobalt 解析失败：${code}`);
+  }
+  const filename = data.filename || '';
+  const ext = filename.includes('.') ? filename.split('.').pop().toLowerCase() : '';
+  const base = {
+    title: filename.replace(/\.[^.]+$/, '') || `媒体 ${new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`,
+    platform: detectPlatform(url),
+    webpage_url: url,
+    filename,
+    ext,
+    directUrl: data.url || '',
+    mediaItems: [],
+    formats: [],
+    cobaltStatus: data.status || '',
+  };
+  if (Array.isArray(data.picker) && data.picker.length) {
+    base.mediaItems = data.picker.map((item, i) => ({
+      url: item.url,
+      type: item.type || 'media',
+      thumb: item.thumb || '',
+      label: `${item.type === 'video' ? '视频' : item.type === 'photo' ? '图片' : '媒体'} ${i + 1}`,
+    })).filter((item) => item.url);
+  }
+  if (data.audio) {
+    const audioUrl = typeof data.audio === 'string' ? data.audio : data.audio.url;
+    if (audioUrl) base.mediaItems.push({ url: audioUrl, type: 'audio', label: '音频', thumb: '' });
+  }
+  if (!base.mediaItems.length && base.directUrl) {
+    base.formats = [{ format_id: 'cobalt', resolution: 'Cobalt 返回', ext, filesize: null }];
+  }
+  if (!base.mediaItems.length && !base.directUrl) throw new Error('Cobalt 没有返回可下载地址');
+  return base;
+}
+function directDownload(url, filename = '') {
+  if (!url) return;
+  const a = document.createElement('a');
+  a.href = url;
+  a.target = '_blank';
+  a.rel = 'noopener';
+  if (filename) a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  saveDownloadHistory({ ...(state.downloadResult || {}), url: state.downloadInput, platform: state.downloadResult?.platform || detectPlatform(state.downloadInput) });
+  toast('已打开下载链接');
+}
 async function downloadServiceFetch(path, options = {}) {
   if (!state.downloadUrl) throw new Error('还没有配置媒体下载服务地址');
   const headers = { ...(options.headers || {}) };
@@ -993,19 +1041,27 @@ async function downloadServiceFetch(path, options = {}) {
 async function inspectMedia() {
   const url = state.downloadInput.trim();
   if (!/^https?:\/\//i.test(url)) { toast('请粘贴 http/https 开头的链接', 'err'); return; }
-  if (!state.downloadUrl) {
+  if (state.mediaMode !== 'cobalt' && !state.downloadUrl) {
     if (DIRECT_MEDIA_RE.test(url)) { window.open(url, '_blank', 'noopener'); return; }
     toast('先在页面底部配置媒体下载服务地址', 'err'); settingsModal(); return;
   }
   state.downloadBusy = true; state.downloadError = ''; state.downloadResult = null; renderView();
   try {
-    const res = await downloadServiceFetch('/api/inspect?url=' + encodeURIComponent(url));
-    const data = await res.json();
-    if (!data || data.error) throw new Error((data && data.error) || '解析失败');
-    data.platform = data.platform || detectPlatform(url);
-    data.webpage_url = data.webpage_url || url;
-    state.downloadResult = data;
-    saveDownloadHistory(data);
+    if (state.mediaMode === 'cobalt') {
+      const data = await apiFetch('/media/resolve', {
+        method: 'POST',
+        body: JSON.stringify({ url }),
+      });
+      state.downloadResult = normalizeCobalt(data, url);
+    } else {
+      const res = await downloadServiceFetch('/api/inspect?url=' + encodeURIComponent(url));
+      const data = await res.json();
+      if (!data || data.error) throw new Error((data && data.error) || '解析失败');
+      data.platform = data.platform || detectPlatform(url);
+      data.webpage_url = data.webpage_url || url;
+      state.downloadResult = data;
+    }
+    saveDownloadHistory(state.downloadResult);
   } catch (e) {
     state.downloadError = e.message;
   } finally {
@@ -1015,6 +1071,10 @@ async function inspectMedia() {
 async function downloadMedia(formatId = 'best') {
   const url = state.downloadInput.trim();
   if (!url) return;
+  if (state.downloadResult?.directUrl) {
+    directDownload(state.downloadResult.directUrl, state.downloadResult.filename || '');
+    return;
+  }
   state.downloadBusy = true; state.downloadError = ''; renderView();
   try {
     const params = new URLSearchParams({ url, format_id: formatId || 'best' });
@@ -1039,17 +1099,24 @@ async function downloadMedia(formatId = 'best') {
 function viewDownload() {
   const result = state.downloadResult;
   const configured = !!state.downloadUrl;
+  const isCobalt = state.mediaMode === 'cobalt';
   const formats = Array.isArray(result?.formats) ? result.formats : [];
+  const mediaItems = Array.isArray(result?.mediaItems) ? result.mediaItems : [];
   const usefulFormats = formats.filter((f) => f.format_id || f.url).slice(0, 14);
-  return head('媒体下载', '粘贴视频、图片页面或媒体直链，解析后下载', `<button class="btn ghost" data-act="openSettings">${ic('sliders')}服务设置</button>`) + `
+  const thumbnail = result?.thumbnail || mediaItems[0]?.thumb || '';
+  return head('媒体下载', isCobalt ? 'Cobalt 在线解析，经 Cloudflare Worker 转发' : '本地 yt-dlp 服务解析', `<button class="btn ghost" data-act="openSettings">${ic('sliders')}服务设置</button>`) + `
+    <div class="tabs download-mode-tabs" role="tablist">
+      <button class="tab ${isCobalt ? 'active' : ''}" data-act="mediaMode" data-mode="cobalt" role="tab">Cobalt 在线</button>
+      <button class="tab ${!isCobalt ? 'active' : ''}" data-act="mediaMode" data-mode="local" role="tab">本地服务</button>
+    </div>
     <div class="panel download-box">
       <form id="download-form" class="download-form">
         <input class="input grow" id="download-url" name="url" type="url" value="${esc(state.downloadInput)}" placeholder="粘贴 YouTube / B站 / 抖音 / 小红书 / 微博 / 图片或视频链接" autocomplete="off">
         <button class="btn primary" type="submit" ${state.downloadBusy ? 'disabled' : ''}>${ic('download')}${state.downloadBusy ? '解析中…' : '解析'}</button>
       </form>
-      <div class="download-hints"><span class="link-tag">${ic('globe')}平台由 yt-dlp 解析</span><span class="link-tag">${ic('image')}支持图片与视频直链</span><span class="link-tag">${ic('alert')}请仅下载你有权使用的内容</span></div>
+      <div class="download-hints"><span class="link-tag">${ic('globe')}${isCobalt ? '由 Cobalt 在线解析' : '平台由本地 yt-dlp 解析'}</span><span class="link-tag">${ic('image')}支持图片与视频直链</span><span class="link-tag">${ic('alert')}请仅下载你有权使用的内容</span></div>
     </div>
-    ${!configured ? `<div class="panel download-setup">
+    ${!isCobalt && !configured ? `<div class="panel download-setup">
       <div class="section-title">${ic('sliders')}连接下载服务</div>
       <p class="download-desc">多平台解析需要一个运行 yt-dlp 的下载服务。仓库里的 <code>downloader/</code> 可直接用 Docker 启动。</p>
       <form id="download-service-form" class="download-service-form">
@@ -1062,24 +1129,29 @@ function viewDownload() {
     ${state.downloadBusy ? `<div class="panel section-gap">${skelHTML(3)}</div>` : result ? `
       <div class="download-result">
         <div class="panel download-preview">
-          ${result.thumbnail ? `<img src="${esc(result.thumbnail)}" alt="" loading="lazy">` : `<div class="download-placeholder">${ic('image')}</div>`}
+          ${thumbnail ? `<img src="${esc(thumbnail)}" alt="" loading="lazy">` : `<div class="download-placeholder">${ic('image')}</div>`}
           <div class="download-meta">
-            <div class="pill p-platform">${esc(result.platform || detectPlatform(result.webpage_url || ''))}</div>
+            <div class="pill p-platform">${esc(isCobalt ? 'Cobalt' : (result.platform || detectPlatform(result.webpage_url || '')))}</div>
             <h2>${esc(result.title || '未命名媒体')}</h2>
             <div class="download-sub">${esc([result.uploader, result.duration ? `${result.duration} 秒` : ''].filter(Boolean).join(' · ') || '已解析')}</div>
-            <button class="btn primary" data-act="downloadMedia" data-format="best">${ic('download')}下载最佳画质</button>
+            ${result.directUrl && !mediaItems.length ? `<button class="btn primary" data-act="downloadMedia" data-format="best">${ic('download')}打开下载链接</button>` : ''}
           </div>
         </div>
         <div class="panel download-formats">
-          <div class="section-title">${ic('download')}可选格式 <span class="cnt">${usefulFormats.length}</span></div>
-          <div class="format-grid">${usefulFormats.length ? usefulFormats.map((f) => `
+          <div class="section-title">${ic('download')}${mediaItems.length ? '可下载项目' : '可选格式'} <span class="cnt">${mediaItems.length || usefulFormats.length}</span></div>
+          <div class="format-grid">${mediaItems.length ? mediaItems.map((item, i) => `
+            <button class="format-card" data-act="downloadDirect" data-i="${i}">
+              <span class="format-main">${esc(item.label || item.type || '媒体')}</span>
+              <span class="format-sub">${esc(item.type === 'audio' ? '音频' : '点击打开下载')}</span>
+              ${ic('download')}
+            </button>`).join('') : usefulFormats.length ? usefulFormats.map((f) => `
             <button class="format-card" data-act="downloadMedia" data-format="${esc(f.format_id || 'best')}">
               <span class="format-main">${esc(f.resolution || f.format_note || f.ext || '媒体')}</span>
               <span class="format-sub">${esc([f.ext, formatBytes(f.filesize || f.filesize_approx)].filter(Boolean).join(' · ') || '自动选择')}</span>
               ${ic('download')}
-            </button>`).join('') : `<div class="download-desc">没有返回可选格式，使用上方“下载最佳画质”。</div>`}</div>
+            </button>`).join('') : `<div class="download-desc">没有返回可下载项目，请切换服务或检查链接。</div>`}</div>
         </div>
-      </div>` : `<div class="panel section-gap">${emptyHTML('download', '粘贴链接后开始解析', '下载服务会返回标题、封面和可选清晰度。支持 yt-dlp 适配的平台，以及常见图片/视频直链。')}</div>`}
+      </div>` : `<div class="panel section-gap">${emptyHTML('download', '粘贴链接后开始解析', isCobalt ? 'Cobalt 通过你的 Cloudflare Worker 请求，不会暴露 API Key。' : '本地下载服务会返回标题、封面和可选清晰度。')}</div>`}
     ${state.downloadHistory.length ? `<div class="section-gap"><div class="section-title">${ic('clock')}最近解析 <span class="cnt">${state.downloadHistory.length}</span><button class="btn sm ghost" data-act="clearDownloadHistory" style="margin-left:auto">清空</button></div>
       <div class="download-history">${state.downloadHistory.slice(0, 8).map((h, i) => `
         <button class="panel download-history-item" data-act="downloadAgain" data-i="${i}">
@@ -1269,6 +1341,15 @@ const ACTIONS = {
   calPrev: () => { const c = state.cal; c.m--; if (c.m < 0) { c.m = 11; c.y--; } renderView(); },
   calNext: () => { const c = state.cal; c.m++; if (c.m > 11) { c.m = 0; c.y++; } renderView(); },
   /* 媒体下载 */
+  mediaMode: (id, el) => {
+    state.mediaMode = el.dataset.mode === 'local' ? 'local' : 'cobalt';
+    localStorage.setItem('wb_media_mode', state.mediaMode);
+    state.downloadResult = null; state.downloadError = ''; renderView();
+  },
+  downloadDirect: (id, el) => {
+    const item = state.downloadResult?.mediaItems?.[+el.dataset.i];
+    if (item?.url) directDownload(item.url, item.filename || '');
+  },
   downloadMedia: (id, el) => downloadMedia(el.dataset.format || 'best'),
   downloadAgain: (id, el) => {
     const item = state.downloadHistory[+el.dataset.i];
@@ -1324,9 +1405,9 @@ function settingsModal() {
       <div class="field full"><label>飞书同步地址（Cloudflare Worker）</label>
         <input class="input" name="feishu" value="${esc(state.feishuUrl)}" placeholder="https://你的-worker.workers.dev">
         <span class="hint">填好 Worker 后，选题中枢会出现「从飞书同步」按钮。Worker 部署方法见仓库 worker/ 目录的说明。</span></div>
-      <div class="field full"><label>媒体下载服务地址</label>
+      <div class="field full"><label>本地媒体下载服务地址（备用）</label>
         <input class="input" name="downloadUrl" value="${esc(state.downloadUrl)}" placeholder="https://你的下载服务地址">
-        <span class="hint">运行仓库 downloader/ 中的 yt-dlp 服务后填写地址。它用于解析多平台视频和图片，不接入 D1。</span></div>
+        <span class="hint">Cobalt 在线模式由 Worker 的 COBALT_API_URL / COBALT_API_KEY 配置；这里只配置本地 yt-dlp 备用服务。</span></div>
       <div class="field full"><label>下载服务令牌（可选）</label>
         <input class="input" name="downloadToken" type="password" value="${esc(state.downloadToken)}" placeholder="公共 HTTPS 部署时建议设置" autocomplete="off"></div>
       <div class="field full"><span class="hint">当前登录：${state.apiToken ? '当前标签页已登录，关闭标签页后需重新输入密码' : '未登录'}</span></div>

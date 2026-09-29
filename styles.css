@@ -526,6 +526,7 @@ td.num-cell { font-variant-numeric: tabular-nums; }
 
 /* ---------- 媒体下载 ---------- */
 .download-box { padding: 16px; }
+.download-mode-tabs { margin-bottom: 12px; }
 .download-form, .download-service-form { display: flex; gap: 10px; align-items: center; }
 .download-form .input { font-size: 14px; padding: 11px 14px; }
 .download-hints { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 11px; }

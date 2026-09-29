@@ -28,7 +28,18 @@ Cloudflare D1（数据库 nickwork）
 
 ## 媒体下载
 
-侧边栏「媒体下载」支持粘贴视频或图片链接，通过 `yt-dlp` 下载服务解析标题、封面和可选格式。下载服务不接入 Cloudflare D1，按需单独运行：
+侧边栏「媒体下载」默认使用 Cobalt 在线解析。浏览器只请求你的 Cloudflare Worker，由 Worker 携带密钥转发到 Cobalt，因此不需要额外服务器，也不会把 Cobalt API Key 暴露到前端。
+
+在 Worker 中添加变量：
+
+```text
+COBALT_API_URL = https://你的-cobalt-api/
+COBALT_API_KEY = 如果实例需要，添加到 Secret
+```
+
+更新 `worker/nickwork-api.js` 后重新部署 Worker。公共 Cobalt 实例的可用性和认证要求可能变化，生产使用建议选择可信实例或自行部署 Cobalt。
+
+如果不想使用 Cobalt，也可以切到「本地服务」模式，按需运行仓库里的 yt-dlp 服务：
 
 ```bash
 ./scripts/run-downloader.sh
