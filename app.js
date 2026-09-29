@@ -1578,10 +1578,10 @@ function showGate(message = '') {
   root.id = 'gate-root';
   root.innerHTML = `<div class="gate">
     <form class="gate-card" id="gate-form">
-      <div class="gate-mark">工</div>
+      <div class="gate-mark" aria-hidden="true"><svg viewBox="0 0 48 48" fill="none"><rect x="5" y="9" width="38" height="9" rx="4.5" fill="currentColor"/><rect x="5" y="20" width="30" height="9" rx="4.5" fill="currentColor" opacity=".55"/><rect x="5" y="31" width="38" height="9" rx="4.5" fill="currentColor" opacity=".28"/></svg></div>
       <div class="gate-title">NickWork</div>
       <div class="gate-sub">${esc(message || '私有工作台 · 连接云端数据')}</div>
-      <div class="password-field"><input class="input" id="gate-pass" type="password" placeholder="访问密码" autocomplete="current-password"><button class="password-toggle" type="button" data-act="togglePassword" data-target="gate-pass" aria-label="显示密码">${ic('eye')}</button></div>
+      <div class="password-field"><input class="input" id="gate-pass" type="password" placeholder="访问密码" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="text"><button class="password-toggle" type="button" data-act="togglePassword" data-target="gate-pass" aria-label="显示密码">${ic('eye')}</button></div>
       <button class="btn ghost gate-cf" id="gate-cf-toggle" type="button" aria-expanded="false">${ic('globe')}<span>Cloudflare 设置</span></button>
       <div class="gate-api-field" id="gate-api-field" hidden>
         <input class="input" id="gate-api" type="url" value="${esc(state.apiBase)}" placeholder="数据服务地址 https://xxx.workers.dev" autocomplete="url">
@@ -1604,7 +1604,7 @@ function showGate(message = '') {
   $('#gate-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const base = normalizeApiBase($('#gate-api').value);
-    const pass = $('#gate-pass').value;
+    const pass = $('#gate-pass').value.trim();
     const button = $('#gate-form button[type="submit"]');
     if (!base || !pass) {
       $('#gate-err').textContent = '请填写数据服务地址和访问密码';

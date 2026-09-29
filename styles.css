@@ -623,11 +623,11 @@ td.num-cell { font-variant-numeric: tabular-nums; }
 }
 .gate-mark {
   width: 52px; height: 52px; border-radius: 15px; margin: 0 auto 2px;
-  background: linear-gradient(145deg, #3a3d44, #101114);
-  color: #fff; display: grid; place-items: center;
-  font-size: 26px; font-weight: 800;
+  background: color-mix(in srgb, var(--accent-text) 10%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--accent-text) 18%, var(--surface));
+  color: var(--accent-text); display: grid; place-items: center;
 }
-[data-theme="dark"] .gate-mark { background: linear-gradient(145deg, #ffffff, #d8dade); color: #101114; }
+.gate-mark svg { width: 32px; height: 32px; display: block; }
 .gate-title { font-size: 20px; font-weight: 800; }
 .gate-sub { font-size: 12.5px; color: var(--text-3); margin-bottom: 8px; }
 .gate-cf { width: 100%; justify-content: center; padding: 5px 10px; font-size: 12.5px; color: var(--text-3); }
