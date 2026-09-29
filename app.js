@@ -272,22 +272,21 @@ function renderView() {
 function renderAll() { renderSidebar(); renderView(); }
 
 /* ---------- 今日待办 ---------- */
-function taskRow(t, today) {
+function taskCard(t, today) {
   const due = t.due;
   const overdue = !t.done && due && due < today;
-  const dueCls = overdue ? 'overdue' : '';
-  return `<div class="task-row ${t.done ? 'done' : ''}" data-id="${t.id}">
-    <button class="checkbox ${t.done ? 'checked' : ''}" data-act="toggleTask" data-id="${t.id}" aria-label="完成">${ic('check', 'ic')}</button>
-    <div class="t-text"><div class="tt">${esc(t.text)}</div>
-      <div class="t-meta">
-        ${t.priority ? `<span class="pill ${PRIO[t.priority] || 'p-low'}">${t.priority}</span>` : ''}
-        ${due ? `<span class="link-tag ${dueCls}">${ic('clock')}截止 ${fmtMD(due)}${overdue ? ' 已逾期' : ''}</span>` : ''}
-        ${t.link ? `<span class="link-tag">关联：${LINK_NAME[t.link] || t.link}</span>` : ''}
-      </div>
+  return `<div class="panel task-card ${t.done ? 'done' : ''}" data-id="${t.id}">
+    <div class="tc-top">
+      <button class="checkbox ${t.done ? 'checked' : ''}" data-act="toggleTask" data-id="${t.id}" aria-label="完成">${ic('check', 'ic')}</button>
+      ${t.priority ? `<span class="pill ${PRIO[t.priority] || 'p-low'}">${t.priority}</span>` : ''}
+      ${due ? `<span class="link-tag ${overdue ? 'overdue' : ''}">${ic('clock')}截止 ${fmtMD(due)}${overdue ? ' 已逾期' : ''}</span>` : ''}
     </div>
-    <div class="row-actions">
+    <div class="tc-text">${esc(t.text)}</div>
+    <div class="tc-meta">${t.link ? `<span class="link-tag">关联：${LINK_NAME[t.link] || t.link}</span>` : ''}</div>
+    <div class="tc-foot">
       ${t.done ? '' : `<button class="btn sm ghost" data-act="taskToTopic" data-id="${t.id}">转选题</button>
       <button class="btn sm ghost" data-act="taskToPrompt" data-id="${t.id}">转提示词</button>`}
+      <span class="spacer"></span>
       <button class="icon-btn danger" data-act="delTask" data-id="${t.id}" aria-label="删除">${ic('trash')}</button>
     </div>
   </div>`;
@@ -339,9 +338,9 @@ function viewTodo() {
       <div class="stat ${overdue ? 'warn' : 'dim'}"><div class="v num">${overdue}</div><div class="k">逾期</div></div>
       <div class="stat dim"><div class="v num">${done.length}</div><div class="k">已完成</div></div>
     </div>
-    <div class="panel">${quickAdd}${v !== 'done' ? '' : ''}
-      ${list.length ? list.map((t) => taskRow(t, today)).join('') : empty}
-    </div>`;
+    ${quickAdd ? `<div class="panel">${quickAdd}</div>` : ''}
+    ${list.length ? `<div class="task-grid" style="margin-top:14px">${list.map((t) => taskCard(t, today)).join('')}</div>`
+      : `<div class="panel" style="margin-top:14px">${empty}</div>`}`;
 }
 
 /* ---------- 选题中枢 ---------- */
