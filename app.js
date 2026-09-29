@@ -81,7 +81,7 @@ const state = {
     try { return JSON.parse(localStorage.getItem('wb_dirty') || '[]').filter((k) => API_KEYS.includes(k)); }
     catch (e) { return []; }
   })()),
-  route: { mod: 'todo', view: 'focus' },
+  route: { mod: 'todo', view: 'all' },
   promptFilter: 'all', promptSearch: '',
   siteFilter: 'all',
   ideaFilter: 'open',
@@ -323,7 +323,7 @@ const MODULES = [
 ];
 const DEFAULT_ORDER = ['todo', 'ideas', 'topics', 'calendar', 'prompts', 'sites', 'gallery'];
 function routeFor(mod) {
-  return { mod, view: mod === 'todo' ? 'focus' : mod === 'topics' ? 'board' : mod === 'prompts' ? 'all' : 'main' };
+  return { mod, view: mod === 'todo' ? 'all' : mod === 'topics' ? 'board' : mod === 'prompts' ? 'all' : 'main' };
 }
 function loadModOrder() {
   try {
@@ -443,7 +443,7 @@ function viewTodo() {
   const todayDue = pending.filter((t) => t.due === today).length;
   const overdue = pending.filter((t) => t.due && t.due < today).length;
   const v = state.route.view;
-  const tabs = tabsHTML('todo', [['focus', '今日焦点'], ['all', '全部任务'], ['done', '已完成']], v)
+  const tabs = tabsHTML('todo', [['all', '全部任务'], ['focus', '今日焦点'], ['done', '已完成']], v)
     + ` <button class="btn primary" data-act="addTask">${ic('plus')}新增任务</button>`;
   let list, empty;
   if (v === 'done') {
@@ -1308,14 +1308,26 @@ function showGate(message = '') {
       <div class="gate-mark">工</div>
       <div class="gate-title">NickWork</div>
       <div class="gate-sub">${esc(message || '私有工作台 · 连接云端数据')}</div>
-      <input class="input" id="gate-api" type="url" value="${esc(state.apiBase)}" placeholder="数据服务地址 https://xxx.workers.dev" autocomplete="url">
       <input class="input" id="gate-pass" type="password" placeholder="访问密码" autocomplete="current-password">
+      <button class="btn ghost gate-cf" id="gate-cf-toggle" type="button" aria-expanded="false">${ic('globe')}<span>Cloudflare 设置</span></button>
+      <div class="gate-api-field" id="gate-api-field" hidden>
+        <input class="input" id="gate-api" type="url" value="${esc(state.apiBase)}" placeholder="数据服务地址 https://xxx.workers.dev" autocomplete="url">
+      </div>
       <button class="btn primary" type="submit" style="width:100%;justify-content:center">进入</button>
       <div class="gate-err" id="gate-err"></div>
     </form>
   </div>`;
   document.body.appendChild(root);
-  ($('#gate-api').value ? $('#gate-pass') : $('#gate-api')).focus();
+  $('#gate-pass').focus();
+  $('#gate-cf-toggle').addEventListener('click', () => {
+    const field = $('#gate-api-field');
+    const button = $('#gate-cf-toggle');
+    field.hidden = !field.hidden;
+    button.setAttribute('aria-expanded', String(!field.hidden));
+    button.classList.toggle('active', !field.hidden);
+    button.innerHTML = `${ic('globe')}<span>${field.hidden ? 'Cloudflare 设置' : '收起设置'}</span>`;
+    if (!field.hidden) $('#gate-api').focus();
+  });
   $('#gate-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const base = normalizeApiBase($('#gate-api').value);
