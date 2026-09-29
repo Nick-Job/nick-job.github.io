@@ -1,6 +1,6 @@
 # NickWork · 个人工作台
 
-个人的内容创作工作台：今日待办、多平台选题中枢、提示词库、网站收藏夹、灵感速记、媒体下载与素材图库。
+个人的内容创作工作台：今日待办、多平台选题中枢、提示词库、网站收藏、灵感速记与素材图库。
 
 前端是纯静态网页，部署在 GitHub Pages；方案 B 的正式数据存于 Cloudflare Worker + D1。网页只在浏览器本地保存登录令牌、离线缓存和待同步队列，不再需要把 GitHub Token 放在每台设备上。
 
@@ -24,52 +24,7 @@ Cloudflare D1（数据库 nickwork）
 - 登录成功后，Worker 返回会话令牌；前端只在当前浏览器标签页内保留，关闭标签页后需重新输入密码。
 - 页面修改会先写入本机缓存，随后自动保存到 D1；短暂离线时刷新也不会丢掉尚未上传的改动。
 - 第一次连接空的 D1 时，页面会自动把仓库现有的 `data/*.json` 导入 D1。
-- 图库仍使用仓库 `gallery/` 文件夹和 GitHub Action 自动生成索引；飞书同步仍是独立的 Worker。
-
-## 媒体下载
-
-侧边栏「媒体下载」默认使用 Cobalt 在线解析。浏览器只请求你的 Cloudflare Worker，由 Worker 携带密钥转发到 Cobalt，因此不需要额外服务器，也不会把 Cobalt API Key 暴露到前端。
-
-如果不使用 Cobalt API，也可以在设置中添加第三方在线下载站点。每行一个：
-
-```text
-站点名称|https://example.com/?url={url}
-```
-
-- `{url}` 会替换成 URL 编码后的媒体链接。
-- `{raw}` 会替换成原始媒体链接。
-- 媒体下载页会为每个站点生成一个按钮，点击后用新标签打开。
-
-大多数下载网站会通过 `X-Frame-Options` 或 CSP 禁止 iframe 嵌入，所以使用新标签打开比“把整个网站嵌进页面”更可靠。
-
-在 Worker 中添加变量：
-
-```text
-COBALT_API_URL = https://你的-cobalt-api/
-COBALT_API_KEY = 如果实例需要，添加到 Secret
-```
-
-更新 `worker/nickwork-api.js` 后重新部署 Worker。公共 Cobalt 实例的可用性和认证要求可能变化，生产使用建议选择可信实例或自行部署 Cobalt。
-
-如果不想使用 Cobalt，也可以切到「本地服务」模式，按需运行仓库里的 yt-dlp 服务：
-
-```bash
-./scripts/run-downloader.sh
-```
-
-或者使用 Docker：
-
-```bash
-docker compose up --build -d
-```
-
-启动后在网页设置中填写下载服务地址，本地默认是：
-
-```text
-http://localhost:8788
-```
-
-公网访问的 GitHub Pages 是 HTTPS，因此远端下载服务也必须使用 HTTPS。部署和可选令牌说明见 `downloader/README.md`。
+- 素材图库从独立 GitHub 图床仓库读取并上传，不进入 D1；飞书同步仍是独立的 Worker。
 
 ## 部署 Worker + D1
 

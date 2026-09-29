@@ -34,7 +34,7 @@ const PRIO = { '高': 'p-high', '中': 'p-mid', '低': 'p-low' };
 const PRIO_ORD = { '高': 0, '中': 1, '低': 2 };
 const PLAT_CLS = { '公众号': 'p-gzh', '小红书': 'p-xhs', '抖音': 'p-dy' };
 const PLAT_CLS2 = { '公众号': 'e-gzh', '小红书': 'e-xhs', '抖音': 'e-dy' };
-const LINK_NAME = { topics: '选题中枢', prompts: '提示词库', sites: '网站收藏夹' };
+const LINK_NAME = { topics: '选题中枢', prompts: '提示词库', sites: '网站收藏' };
 
 /* ---------- 图标（stroke 基元组合，统一 1.8 线宽） ---------- */
 const ICONS = {
@@ -65,7 +65,6 @@ const ICONS = {
   eye: '<path d="M3.2 10c1.9-3.1 4.1-4.6 6.8-4.6s4.9 1.5 6.8 4.6c-1.9 3.1-4.1 4.6-6.8 4.6S5.1 13.1 3.2 10z"/><circle cx="10" cy="10" r="2.3"/>',
   eyeOff: '<path d="M3.2 10c1.9-3.1 4.1-4.6 6.8-4.6 1.2 0 2.3.3 3.4.8M16.8 10c-.7 1.2-1.5 2.2-2.4 3M12.9 14.2c-.9.3-1.9.4-2.9.4-2.7 0-4.9-1.5-6.8-4.6.5-.8 1-1.5 1.6-2.1"/><line x1="4.2" y1="16" x2="15.8" y2="4.4"/>',
   image: '<rect x="3" y="4.5" width="14" height="11" rx="2"/><circle cx="7.2" cy="8.3" r="1.3"/><path d="M3.5 13.6l3.4-3 3 2.6 3.6-3.6 3 2.6"/>',
-  download: '<path d="M10 3.5v9"/><polyline points="6.5 9 10 12.5 13.5 9"/><path d="M4 14.5v1.2c0 .7.6 1.3 1.3 1.3h9.4c.7 0 1.3-.6 1.3-1.3v-1.2"/>',
 };
 const ic = (n, cls = 'ic') => `<svg class="${cls}" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[n] || ''}</svg>`;
 
@@ -78,24 +77,12 @@ const state = {
   apiBase: localStorage.getItem('wb_api_base') || DEFAULT_API_BASE,
   apiToken: sessionStorage.getItem('wb_api_token') || '',
   feishuUrl: localStorage.getItem('wb_feishu_url') || '',
-  downloadUrl: localStorage.getItem('wb_download_url') || '',
-  downloadToken: sessionStorage.getItem('wb_download_token') || '',
-  mediaMode: localStorage.getItem('wb_media_mode') || 'cobalt',
   galleryRepo: localStorage.getItem('wb_gallery_repo') || 'Nick-Job/boomb',
   galleryBranch: localStorage.getItem('wb_gallery_branch') || 'main',
   galleryRoot: localStorage.getItem('wb_gallery_root') || 'images',
   galleryFolder: localStorage.getItem('wb_gallery_folder') || 'uploads',
   galleryToken: localStorage.getItem('wb_gallery_token') || sessionStorage.getItem('wb_gallery_token') || '',
   galleryUploading: false, galleryProgress: '',
-  downloadSites: (() => {
-    try { const v = JSON.parse(localStorage.getItem('wb_download_sites') || '[]'); return Array.isArray(v) ? v : []; }
-    catch (e) { return []; }
-  })(),
-  downloadInput: '', downloadResult: null, downloadBusy: false, downloadError: '',
-  downloadHistory: (() => {
-    try { const v = JSON.parse(localStorage.getItem('wb_download_history') || '[]'); return Array.isArray(v) ? v : []; }
-    catch (e) { return []; }
-  })(),
   dirty: new Set((() => {
     try { return JSON.parse(localStorage.getItem('wb_dirty') || '[]').filter((k) => API_KEYS.includes(k)); }
     catch (e) { return []; }
@@ -147,6 +134,13 @@ function safeUploadName(name) {
 }
 function safeFolder(name) {
   return String(name || '').replace(/\\/g, '/').split('/').map((part) => part.normalize('NFKC').replace(/[\\/:*?"<>|]+/g, '-').replace(/^\.+$/, '').trim()).filter(Boolean).slice(0, 4).join('/');
+}
+function formatBytes(n) {
+  if (!n || Number.isNaN(+n)) return '';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let value = +n, i = 0;
+  while (value >= 1024 && i < units.length - 1) { value /= 1024; i++; }
+  return `${value.toFixed(i ? 1 : 0)} ${units[i]}`;
 }
 function persistGalleryConfig(values) {
   state.galleryRepo = String(values.galleryRepo || '').trim().replace(/^https?:\/\/github\.com\//, '').replace(/\.git$/, '');
@@ -460,7 +454,6 @@ function navCounts() {
     sites: (d.sites?.items || []).length,
     ideas: (d.ideas?.items || []).filter((i) => !i.processed).length,
     calendar: (d.topics?.items || []).filter((t) => t.eta && t.eta >= todayISO()).length,
-    download: state.downloadHistory.length,
     gallery: (d.gallery?.folders || []).reduce((n, f) => n + f.images.length, 0),
   };
 }
@@ -470,11 +463,10 @@ const MODULES = [
   { mod: 'topics', icon: 'board', label: '选题中枢' },
   { mod: 'calendar', icon: 'calendar', label: '日历排期' },
   { mod: 'prompts', icon: 'sparkle', label: '提示词库' },
-  { mod: 'sites', icon: 'globe', label: '网站收藏夹' },
-  { mod: 'download', icon: 'download', label: '媒体下载' },
+  { mod: 'sites', icon: 'globe', label: '网站收藏' },
   { mod: 'gallery', icon: 'image', label: '素材图库' },
 ];
-const DEFAULT_ORDER = ['todo', 'ideas', 'topics', 'calendar', 'prompts', 'sites', 'download', 'gallery'];
+const DEFAULT_ORDER = ['todo', 'ideas', 'topics', 'calendar', 'prompts', 'sites', 'gallery'];
 function routeFor(mod) {
   return { mod, view: mod === 'todo' ? 'all' : mod === 'topics' ? 'board' : mod === 'prompts' ? 'all' : 'main' };
 }
@@ -548,7 +540,7 @@ function skelHTML(n = 4) { return `<div style="padding:16px 18px">${Array.from({
 function renderView() {
   const v = $('#view');
   if (!state.loaded) { v.innerHTML = head('加载中') + `<div class="panel section-gap">${skelHTML()}</div>`; return; }
-  const fns = { todo: viewTodo, topics: viewTopics, prompts: viewPrompts, sites: viewSites, ideas: viewIdeas, calendar: viewCalendar, download: viewDownload, gallery: viewGallery };
+  const fns = { todo: viewTodo, topics: viewTopics, prompts: viewPrompts, sites: viewSites, ideas: viewIdeas, calendar: viewCalendar, gallery: viewGallery };
   v.innerHTML = `<div class="view-body">${(fns[state.route.mod] || viewTodo)()}</div>`;
   const bar = `<div class="mobile-bar"><button class="icon-btn" data-act="openSide" aria-label="菜单">${ic('menu')}</button>
     <span class="mb-title">${MODULES.find((m) => m.mod === state.route.mod)?.label || ''}</span></div>`;
@@ -626,7 +618,7 @@ function taskModal() {
       <div class="field full"><label>任务内容</label><textarea class="textarea" name="text" rows="2" placeholder="一句能直接开工的动作句" required></textarea></div>
       <div class="field"><label>优先级</label><select class="select" name="priority" style="width:100%"><option>高</option><option selected>中</option><option>低</option></select></div>
       <div class="field"><label>截止日（可选）</label><input class="input" type="date" name="due"></div>
-      <div class="field"><label>关联模块</label><select class="select" name="link" style="width:100%"><option value="">不关联</option><option value="topics">选题中枢</option><option value="prompts">提示词库</option><option value="sites">网站收藏夹</option></select></div>
+      <div class="field"><label>关联模块</label><select class="select" name="link" style="width:100%"><option value="">不关联</option><option value="topics">选题中枢</option><option value="prompts">提示词库</option><option value="sites">网站收藏</option></select></div>
       <div class="field"><label>备注（可选）</label><input class="input" name="note" placeholder="补充信息"></div>
     </div></form>`,
     foot: `<button class="btn ghost" data-act="closeModal">取消</button>
@@ -983,7 +975,7 @@ function linkModal(p) {
   });
 }
 
-/* ---------- 网站收藏夹 ---------- */
+/* ---------- 网站收藏 ---------- */
 const TILE_HUES = [212, 154, 16, 262, 340, 44, 190];
 function siteCard(s) {
   let h = 0; for (const ch of s.name) h = (h * 31 + ch.charCodeAt(0)) % 997;
@@ -1010,7 +1002,7 @@ function viewSites() {
   const tabs = tabsHTML('sites', [['all', '全部'], ...groups.map((g) => [g, g])], v);
   const shown = v === 'all' ? groups : groups.filter((g) => g === v);
   const list = v === 'all' ? d.items : d.items.filter((s) => s.group === v);
-  return head('网站收藏夹', `${groups.length} 个分组，${d.items.length} 个网站`, tabs + `
+  return head('网站收藏', `${groups.length} 个分组，${d.items.length} 个网站`, tabs + `
     <button class="btn primary" data-act="addSiteModal">${ic('plus')}添加网站</button>`) + `
     ${list.length ? shown.map((g) => {
       const items = d.items.filter((s) => s.group === g);
@@ -1089,237 +1081,6 @@ function viewIdeas() {
     </div>
     ${list.length ? `<div class="idea-grid" style="margin-top:14px">${list.map(ideaCard).join('')}</div>`
       : `<div class="panel" style="margin-top:14px">${emptyHTML('bulb', '没有待处理的灵感', '上面的输入框想到就记，之后再转成任务、选题或提示词。')}</div>`}`;
-}
-
-/* ---------- 媒体下载 ---------- */
-const DOWNLOAD_PLATFORM_NAMES = [
-  ['youtube.com', 'YouTube'], ['youtu.be', 'YouTube'],
-  ['bilibili.com', '哔哩哔哩'], ['douyin.com', '抖音'],
-  ['xiaohongshu.com', '小红书'], ['xhslink.com', '小红书'],
-  ['weibo.com', '微博'], ['vimeo.com', 'Vimeo'],
-  ['tiktok.com', 'TikTok'], ['instagram.com', 'Instagram'],
-  ['x.com', 'X'], ['twitter.com', 'X'],
-];
-const DIRECT_MEDIA_RE = /\.(mp4|webm|mov|m4v|mkv|jpg|jpeg|png|gif|webp|avif)(\?.*)?$/i;
-
-function detectPlatform(url) {
-  try {
-    const host = new URL(url).hostname.replace(/^www\./, '').toLowerCase();
-    const hit = DOWNLOAD_PLATFORM_NAMES.find(([domain]) => host === domain || host.endsWith('.' + domain));
-    return hit ? hit[1] : (DIRECT_MEDIA_RE.test(url) ? '媒体直链' : host);
-  } catch (e) { return '未知平台'; }
-}
-function formatBytes(n) {
-  if (!n || Number.isNaN(+n)) return '';
-  const units = ['B', 'KB', 'MB', 'GB'];
-  let value = +n, i = 0;
-  while (value >= 1024 && i < units.length - 1) { value /= 1024; i++; }
-  return `${value.toFixed(i ? 1 : 0)} ${units[i]}`;
-}
-function parseDownloadSites(text) {
-  return String(text || '').split('\n').map((line) => {
-    const [name, ...rest] = line.split('|');
-    const template = rest.join('|').trim();
-    return { name: (name || '').trim(), template };
-  }).filter((item) => item.name && /^https?:\/\//i.test(item.template)).slice(0, 20);
-}
-function openDownloadSite(site) {
-  const url = state.downloadInput.trim();
-  if (!url) { toast('先粘贴要下载的媒体链接', 'err'); return; }
-  if (!site || !site.template) return;
-  const target = site.template.replace(/\{url\}/g, encodeURIComponent(url)).replace(/\{raw\}/g, url);
-  window.open(target, '_blank', 'noopener,noreferrer');
-}
-function saveDownloadHistory(item) {
-  const row = { url: item.url || item.webpage_url, title: item.title || '未命名媒体', platform: item.platform || detectPlatform(item.url || item.webpage_url || ''), thumbnail: item.thumbnail || '', created: new Date().toISOString() };
-  state.downloadHistory = [row, ...state.downloadHistory.filter((x) => x.url !== row.url)].slice(0, 20);
-  localStorage.setItem('wb_download_history', JSON.stringify(state.downloadHistory));
-}
-function normalizeCobalt(data, url) {
-  if (!data || data.status === 'error') {
-    const code = data?.error?.code || data?.error || '解析失败';
-    throw new Error(`Cobalt 解析失败：${code}`);
-  }
-  const filename = data.filename || '';
-  const ext = filename.includes('.') ? filename.split('.').pop().toLowerCase() : '';
-  const base = {
-    title: filename.replace(/\.[^.]+$/, '') || `媒体 ${new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`,
-    platform: detectPlatform(url),
-    webpage_url: url,
-    filename,
-    ext,
-    directUrl: data.url || '',
-    mediaItems: [],
-    formats: [],
-    cobaltStatus: data.status || '',
-  };
-  if (Array.isArray(data.picker) && data.picker.length) {
-    base.mediaItems = data.picker.map((item, i) => ({
-      url: item.url,
-      type: item.type || 'media',
-      thumb: item.thumb || '',
-      label: `${item.type === 'video' ? '视频' : item.type === 'photo' ? '图片' : '媒体'} ${i + 1}`,
-    })).filter((item) => item.url);
-  }
-  if (data.audio) {
-    const audioUrl = typeof data.audio === 'string' ? data.audio : data.audio.url;
-    if (audioUrl) base.mediaItems.push({ url: audioUrl, type: 'audio', label: '音频', thumb: '' });
-  }
-  if (!base.mediaItems.length && base.directUrl) {
-    base.formats = [{ format_id: 'cobalt', resolution: 'Cobalt 返回', ext, filesize: null }];
-  }
-  if (!base.mediaItems.length && !base.directUrl) throw new Error('Cobalt 没有返回可下载地址');
-  return base;
-}
-function directDownload(url, filename = '') {
-  if (!url) return;
-  const a = document.createElement('a');
-  a.href = url;
-  a.target = '_blank';
-  a.rel = 'noopener';
-  if (filename) a.download = filename;
-  document.body.appendChild(a); a.click(); a.remove();
-  saveDownloadHistory({ ...(state.downloadResult || {}), url: state.downloadInput, platform: state.downloadResult?.platform || detectPlatform(state.downloadInput) });
-  toast('已打开下载链接');
-}
-async function downloadServiceFetch(path, options = {}) {
-  if (!state.downloadUrl) throw new Error('还没有配置媒体下载服务地址');
-  const headers = { ...(options.headers || {}) };
-  if (state.downloadToken) headers.Authorization = 'Bearer ' + state.downloadToken;
-  const res = await fetch(state.downloadUrl.replace(/\/+$/, '') + path, { ...options, headers, cache: 'no-store' });
-  if (!res.ok) {
-    let msg = `下载服务请求失败（${res.status}）`;
-    try { const j = await res.json(); if (j && j.detail) msg = String(j.detail); } catch (e) {}
-    throw new Error(msg);
-  }
-  return res;
-}
-async function inspectMedia() {
-  const url = state.downloadInput.trim();
-  if (!/^https?:\/\//i.test(url)) { toast('请粘贴 http/https 开头的链接', 'err'); return; }
-  if (state.mediaMode !== 'cobalt' && !state.downloadUrl) {
-    if (DIRECT_MEDIA_RE.test(url)) { window.open(url, '_blank', 'noopener'); return; }
-    toast('先在页面底部配置媒体下载服务地址', 'err'); settingsModal(); return;
-  }
-  state.downloadBusy = true; state.downloadError = ''; state.downloadResult = null; renderView();
-  try {
-    if (state.mediaMode === 'cobalt') {
-      const data = await apiFetch('/media/resolve', {
-        method: 'POST',
-        body: JSON.stringify({ url }),
-      });
-      state.downloadResult = normalizeCobalt(data, url);
-    } else {
-      const res = await downloadServiceFetch('/api/inspect?url=' + encodeURIComponent(url));
-      const data = await res.json();
-      if (!data || data.error) throw new Error((data && data.error) || '解析失败');
-      data.platform = data.platform || detectPlatform(url);
-      data.webpage_url = data.webpage_url || url;
-      state.downloadResult = data;
-    }
-    saveDownloadHistory(state.downloadResult);
-  } catch (e) {
-    state.downloadError = e.message;
-  } finally {
-    state.downloadBusy = false; renderView();
-  }
-}
-async function downloadMedia(formatId = 'best') {
-  const url = state.downloadInput.trim();
-  if (!url) return;
-  if (state.downloadResult?.directUrl) {
-    directDownload(state.downloadResult.directUrl, state.downloadResult.filename || '');
-    return;
-  }
-  state.downloadBusy = true; state.downloadError = ''; renderView();
-  try {
-    const params = new URLSearchParams({ url, format_id: formatId || 'best' });
-    const res = await downloadServiceFetch('/api/download?' + params.toString());
-    const blob = await res.blob();
-    const objectUrl = URL.createObjectURL(blob);
-    const ext = (state.downloadResult?.ext || blob.type.split('/')[1] || 'bin').replace(/[^a-z0-9]/gi, '');
-    const base = String(state.downloadResult?.title || 'media').replace(/[\\/:*?"<>|]+/g, '_').slice(0, 100);
-    const a = document.createElement('a');
-    a.href = objectUrl; a.download = `${base || 'media'}.${ext}`;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
-    saveDownloadHistory({ ...(state.downloadResult || {}), url, platform: state.downloadResult?.platform || detectPlatform(url) });
-    toast('下载已开始');
-  } catch (e) {
-    state.downloadError = e.message;
-    toast('下载失败：' + e.message, 'err');
-  } finally {
-    state.downloadBusy = false; renderView();
-  }
-}
-function viewDownload() {
-  const result = state.downloadResult;
-  const configured = !!state.downloadUrl;
-  const isCobalt = state.mediaMode === 'cobalt';
-  const formats = Array.isArray(result?.formats) ? result.formats : [];
-  const mediaItems = Array.isArray(result?.mediaItems) ? result.mediaItems : [];
-  const usefulFormats = formats.filter((f) => f.format_id || f.url).slice(0, 14);
-  const thumbnail = result?.thumbnail || mediaItems[0]?.thumb || '';
-  return head('媒体下载', isCobalt ? 'Cobalt 在线解析，经 Cloudflare Worker 转发' : '本地 yt-dlp 服务解析', `<button class="btn ghost" data-act="openSettings">${ic('sliders')}服务设置</button>`) + `
-    <div class="tabs download-mode-tabs" role="tablist">
-      <button class="tab ${isCobalt ? 'active' : ''}" data-act="mediaMode" data-mode="cobalt" role="tab">Cobalt 在线</button>
-      <button class="tab ${!isCobalt ? 'active' : ''}" data-act="mediaMode" data-mode="local" role="tab">本地服务</button>
-    </div>
-    <div class="panel download-box">
-      <form id="download-form" class="download-form">
-        <input class="input grow" id="download-url" name="url" type="url" value="${esc(state.downloadInput)}" placeholder="粘贴 YouTube / B站 / 抖音 / 小红书 / 微博 / 图片或视频链接" autocomplete="off">
-        <button class="btn primary" type="submit" ${state.downloadBusy ? 'disabled' : ''}>${ic('download')}${state.downloadBusy ? '解析中…' : '解析'}</button>
-      </form>
-      <div class="download-hints"><span class="link-tag">${ic('globe')}${isCobalt ? '由 Cobalt 在线解析' : '平台由本地 yt-dlp 解析'}</span><span class="link-tag">${ic('image')}支持图片与视频直链</span><span class="link-tag">${ic('alert')}请仅下载你有权使用的内容</span></div>
-    </div>
-    <div class="panel download-sites">
-      <div class="section-title">${ic('external')}在线下载站点 <button class="btn sm ghost" data-act="openSettings" style="margin-left:auto">管理站点</button></div>
-      ${state.downloadSites.length ? `<div class="download-site-grid">${state.downloadSites.map((site, i) => `
-        <button class="btn ghost download-site-btn" data-act="openDownloadSite" data-i="${i}">${ic('external')}<span>${esc(site.name)}</span></button>`).join('')}</div>`
-        : `<div class="download-desc">还没有配置在线站点。进入设置，每行粘贴一个：<br><code>站点名称|https://example.com/?url={url}</code></div>`}
-    </div>
-    ${!isCobalt && !configured ? `<div class="panel download-setup">
-      <div class="section-title">${ic('sliders')}连接下载服务</div>
-      <p class="download-desc">多平台解析需要一个运行 yt-dlp 的下载服务。仓库里的 <code>downloader/</code> 可直接用 Docker 启动。</p>
-      <form id="download-service-form" class="download-service-form">
-        <input class="input grow" name="url" type="url" value="${esc(state.downloadUrl)}" placeholder="https://你的下载服务地址" autocomplete="url">
-        <input class="input" name="token" type="password" value="${esc(state.downloadToken)}" placeholder="服务令牌（可选）" autocomplete="off">
-        <button class="btn primary" type="submit">保存服务</button>
-      </form>
-    </div>` : ''}
-    ${state.downloadError ? `<div class="panel download-error">${ic('alert')}<span>${esc(state.downloadError)}</span></div>` : ''}
-    ${state.downloadBusy ? `<div class="panel section-gap">${skelHTML(3)}</div>` : result ? `
-      <div class="download-result">
-        <div class="panel download-preview">
-          ${thumbnail ? `<img src="${esc(thumbnail)}" alt="" loading="lazy">` : `<div class="download-placeholder">${ic('image')}</div>`}
-          <div class="download-meta">
-            <div class="pill p-platform">${esc(isCobalt ? 'Cobalt' : (result.platform || detectPlatform(result.webpage_url || '')))}</div>
-            <h2>${esc(result.title || '未命名媒体')}</h2>
-            <div class="download-sub">${esc([result.uploader, result.duration ? `${result.duration} 秒` : ''].filter(Boolean).join(' · ') || '已解析')}</div>
-            ${result.directUrl && !mediaItems.length ? `<button class="btn primary" data-act="downloadMedia" data-format="best">${ic('download')}打开下载链接</button>` : ''}
-          </div>
-        </div>
-        <div class="panel download-formats">
-          <div class="section-title">${ic('download')}${mediaItems.length ? '可下载项目' : '可选格式'} <span class="cnt">${mediaItems.length || usefulFormats.length}</span></div>
-          <div class="format-grid">${mediaItems.length ? mediaItems.map((item, i) => `
-            <button class="format-card" data-act="downloadDirect" data-i="${i}">
-              <span class="format-main">${esc(item.label || item.type || '媒体')}</span>
-              <span class="format-sub">${esc(item.type === 'audio' ? '音频' : '点击打开下载')}</span>
-              ${ic('download')}
-            </button>`).join('') : usefulFormats.length ? usefulFormats.map((f) => `
-            <button class="format-card" data-act="downloadMedia" data-format="${esc(f.format_id || 'best')}">
-              <span class="format-main">${esc(f.resolution || f.format_note || f.ext || '媒体')}</span>
-              <span class="format-sub">${esc([f.ext, formatBytes(f.filesize || f.filesize_approx)].filter(Boolean).join(' · ') || '自动选择')}</span>
-              ${ic('download')}
-            </button>`).join('') : `<div class="download-desc">没有返回可下载项目，请切换服务或检查链接。</div>`}</div>
-        </div>
-      </div>` : `<div class="panel section-gap">${emptyHTML('download', '粘贴链接后开始解析', isCobalt ? 'Cobalt 通过你的 Cloudflare Worker 请求，不会暴露 API Key。' : '本地下载服务会返回标题、封面和可选清晰度。')}</div>`}
-    ${state.downloadHistory.length ? `<div class="section-gap"><div class="section-title">${ic('clock')}最近解析 <span class="cnt">${state.downloadHistory.length}</span><button class="btn sm ghost" data-act="clearDownloadHistory" style="margin-left:auto">清空</button></div>
-      <div class="download-history">${state.downloadHistory.slice(0, 8).map((h, i) => `
-        <button class="panel download-history-item" data-act="downloadAgain" data-i="${i}">
-          ${h.thumbnail ? `<img src="${esc(h.thumbnail)}" alt="" loading="lazy">` : `<span class="dh-icon">${ic('download')}</span>`}
-          <span><b>${esc(h.title)}</b><small>${esc(h.platform || detectPlatform(h.url))} · ${relTime(h.created)}</small></span>
-        </button>`).join('')}</div></div>` : ''}`;
 }
 
 /* ---------- 图库 ---------- */
@@ -1560,30 +1321,6 @@ const ACTIONS = {
   signalToTopic: (id) => { const s = state.db.topics.signals.find((x) => x.id === id); s.handled = true; newTopic({ title: s.text.split('：').slice(1).join('：') || s.text, platform: '小红书', source: '热榜', status: '待评估' }); toast('信号已转为选题'); },
   calPrev: () => { const c = state.cal; c.m--; if (c.m < 0) { c.m = 11; c.y--; } renderView(); },
   calNext: () => { const c = state.cal; c.m++; if (c.m > 11) { c.m = 0; c.y++; } renderView(); },
-  /* 媒体下载 */
-  mediaMode: (id, el) => {
-    state.mediaMode = el.dataset.mode === 'local' ? 'local' : 'cobalt';
-    localStorage.setItem('wb_media_mode', state.mediaMode);
-    state.downloadResult = null; state.downloadError = ''; renderView();
-  },
-  downloadDirect: (id, el) => {
-    const item = state.downloadResult?.mediaItems?.[+el.dataset.i];
-    if (item?.url) directDownload(item.url, item.filename || '');
-  },
-  openDownloadSite: (id, el) => openDownloadSite(state.downloadSites[+el.dataset.i]),
-  downloadMedia: (id, el) => downloadMedia(el.dataset.format || 'best'),
-  downloadAgain: (id, el) => {
-    const item = state.downloadHistory[+el.dataset.i];
-    if (!item) return;
-    state.downloadInput = item.url;
-    inspectMedia();
-  },
-  clearDownloadHistory: () => {
-    state.downloadHistory = [];
-    localStorage.removeItem('wb_download_history');
-    renderAll();
-    toast('已清空最近解析');
-  },
   /* 图库 */
   galleryUpload: () => galleryUploadModal(),
   openLb: (id, el) => openLightbox(el.dataset.folder, +el.dataset.i),
@@ -1632,14 +1369,6 @@ function settingsModal() {
       <div class="field full"><label>飞书同步地址（Cloudflare Worker）</label>
         <input class="input" name="feishu" value="${esc(state.feishuUrl)}" placeholder="https://你的-worker.workers.dev">
         <span class="hint">填好 Worker 后，选题中枢会出现「从飞书同步」按钮。Worker 部署方法见仓库 worker/ 目录的说明。</span></div>
-      <div class="field full"><label>本地媒体下载服务地址（备用）</label>
-        <input class="input" name="downloadUrl" value="${esc(state.downloadUrl)}" placeholder="https://你的下载服务地址">
-        <span class="hint">Cobalt 在线模式由 Worker 的 COBALT_API_URL / COBALT_API_KEY 配置；这里只配置本地 yt-dlp 备用服务。</span></div>
-      <div class="field full"><label>下载服务令牌（可选）</label>
-        <input class="input" name="downloadToken" type="password" value="${esc(state.downloadToken)}" placeholder="公共 HTTPS 部署时建议设置" autocomplete="off"></div>
-      <div class="field full"><label>在线下载站点</label>
-        <textarea class="textarea" name="downloadSites" rows="5" placeholder="Cobalt 网页|https://cobalt.tools/?url={url}&#10;站点名称|https://example.com/?url={url}">${esc(state.downloadSites.map((site) => `${site.name}|${site.template}`).join('\n'))}</textarea>
-        <span class="hint">每行一个：名称|网址模板。{url} 会替换成编码后的链接，{raw} 保留原始链接。</span></div>
       <div class="field full"><span class="hint">当前登录：${state.apiToken ? '当前标签页已登录，关闭标签页后需重新输入密码' : '未登录'}</span></div>
     </div></form>`,
     foot: `<button class="btn danger-ghost" id="st-clear" style="margin-right:auto">退出登录</button>
@@ -1654,12 +1383,6 @@ function settingsModal() {
     setApiSession(nextBase, changed ? '' : state.apiToken);
     state.feishuUrl = (f.feishu || '').trim();
     state.feishuUrl ? localStorage.setItem('wb_feishu_url', state.feishuUrl) : localStorage.removeItem('wb_feishu_url');
-    state.downloadUrl = normalizeApiBase(f.downloadUrl);
-    state.downloadToken = (f.downloadToken || '').trim();
-    state.downloadUrl ? localStorage.setItem('wb_download_url', state.downloadUrl) : localStorage.removeItem('wb_download_url');
-    state.downloadToken ? sessionStorage.setItem('wb_download_token', state.downloadToken) : sessionStorage.removeItem('wb_download_token');
-    state.downloadSites = parseDownloadSites(f.downloadSites);
-    localStorage.setItem('wb_download_sites', JSON.stringify(state.downloadSites));
     persistGalleryConfig(f);
     closeModal(); renderAll();
     if (!nextBase || changed) { showGate('数据服务地址已更新，请重新登录'); return; }
@@ -1707,19 +1430,6 @@ document.addEventListener('submit', (e) => {
     if (!d.text.trim()) return;
     state.db.ideas.items.push({ id: uid(), text: d.text.trim(), processed: false, created: new Date().toISOString() });
     scheduleSave('ideas'); renderAll(); toast('已记下来');
-  } else if (f.id === 'download-form') {
-    e.preventDefault();
-    state.downloadInput = String(new FormData(f).get('url') || '').trim();
-    inspectMedia();
-  } else if (f.id === 'download-service-form') {
-    e.preventDefault();
-    const d = Object.fromEntries(new FormData(f).entries());
-    state.downloadUrl = normalizeApiBase(d.url);
-    state.downloadToken = String(d.token || '').trim();
-    state.downloadUrl ? localStorage.setItem('wb_download_url', state.downloadUrl) : localStorage.removeItem('wb_download_url');
-    state.downloadToken ? sessionStorage.setItem('wb_download_token', state.downloadToken) : sessionStorage.removeItem('wb_download_token');
-    renderAll();
-    toast(state.downloadUrl ? '下载服务已保存' : '已清除下载服务地址');
   }
 });
 document.addEventListener('keydown', (e) => {

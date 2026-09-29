@@ -11,8 +11,6 @@
  *                       658243f3ccf5bb9f27c0258dabd8deb3490f3c0cb6671a192b4969114cdc6d4f）
  *      SESSION_SECRET   一串随机字符（README 里给了生成命令）
  *      ALLOWED_ORIGIN   https://nick-job.github.io,http://localhost:8123
- *      COBALT_API_URL   Cobalt API 的完整地址，例如 https://api.cobalt.tools/
- *      COBALT_API_KEY   可选；如果 Cobalt 实例要求 API Key，就填在 Worker Secret 中
  * 5. 部署后把 Worker 网址（https://nickwork-api.你的子域.workers.dev）填进
  *    NickWork 设置里的「数据服务地址」，或交给助手写进代码默认值。
  *
@@ -111,35 +109,6 @@ export default {
         return new Response(JSON.stringify({ data }), { headers });
       }
 
-      // Cobalt 在线解析：API Key 只保存在 Worker 环境变量中，不进入前端
-      if (url.pathname === "/media/resolve" && request.method === "POST") {
-        if (!env.COBALT_API_URL) {
-          return new Response(JSON.stringify({ error: "未配置 COBALT_API_URL" }), { status: 500, headers });
-        }
-        const body = await request.json().catch(() => ({}));
-        let target;
-        try {
-          target = new URL(String(body.url || ""));
-          if (!["http:", "https:"].includes(target.protocol)) throw new Error();
-        } catch (e) {
-          return new Response(JSON.stringify({ error: "无效的媒体链接" }), { status: 400, headers });
-        }
-        const cobaltHeaders = { "Accept": "application/json", "Content-Type": "application/json" };
-        if (env.COBALT_API_KEY) cobaltHeaders.Authorization = "Api-Key " + env.COBALT_API_KEY;
-        const upstream = await fetch(env.COBALT_API_URL, {
-          method: "POST",
-          headers: cobaltHeaders,
-          body: JSON.stringify({
-            url: target.toString(),
-            videoQuality: String(body.videoQuality || "1080"),
-            audioFormat: String(body.audioFormat || "mp3"),
-            downloadMode: String(body.downloadMode || "auto"),
-            filenameStyle: "basic",
-          }),
-        });
-        const text = await upstream.text();
-        return new Response(text, { status: upstream.status, headers });
-      }
 
       const m = url.pathname.match(/^\/data\/([a-z]+)$/);
       if (m && request.method === "PUT") {
