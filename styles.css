@@ -96,12 +96,10 @@ svg.ic { width: 17px; height: 17px; flex: none; vertical-align: -3px; }
 /* ---------- sidebar（与页面同底色 + 胶囊选中态） ---------- */
 .brand { display: flex; align-items: center; gap: 10px; padding: 2px 10px 18px; }
 .brand-mark {
-  width: 32px; height: 32px; border-radius: 10px; flex: none;
-  background: linear-gradient(145deg, #34363c, #101114);
-  display: grid; place-items: center; color: #fff;
-  box-shadow: 0 4px 12px rgba(16, 17, 20, .22);
+  width: 34px; height: 34px; border-radius: 11px; flex: none;
+  object-fit: cover;
+  box-shadow: 0 2px 10px rgba(16, 17, 20, .16);
 }
-[data-theme="dark"] .brand-mark { background: #f0f1f3; color: #101114; box-shadow: none; }
 .brand-name { font-weight: 700; font-size: 15.5px; letter-spacing: .02em; }
 .brand-sub { font-size: 11px; color: var(--text-3); margin-top: 1px; }
 
