@@ -5,6 +5,18 @@
    ============================================================ */
 'use strict';
 
+/* ---------- 访问锁（密码门） ---------- */
+/* 密码哈希存放在本文件里：改密码 = 把 sha256(新密码) 填到 hash 里（或让助手改）。
+   注意：这是静态站点的"门帘"，防止随手打开的人；懂技术的人绕过页面仍可直读数据文件。 */
+const ACCESS = {
+  enabled: true,
+  hash: '658243f3ccf5bb9f27c0258dabd8deb3490f3c0cb6671a192b4969114cdc6d4f', // 默认密码 nickwork2026
+};
+async function sha256Hex(str) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 /* ---------- 小工具 ---------- */
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -76,6 +88,7 @@ const state = {
   sync: 'init', lastErr: '',
   token: localStorage.getItem('wb_token') || '',
   feishuUrl: localStorage.getItem('wb_feishu_url') || '',
+  dirty: new Set(JSON.parse(localStorage.getItem('wb_dirty') || '[]')),
   route: { mod: 'todo', view: 'focus' },
   promptFilter: 'all', promptSearch: '',
   siteFilter: 'all',
@@ -101,6 +114,7 @@ async function gh(path, opts = {}) {
   if (!res.ok) { const e = new Error('GitHub API ' + res.status); e.status = res.status; e.body = await res.text().catch(() => ''); throw e; }
   return res.json();
 }
+function saveDirty() { localStorage.setItem('wb_dirty', JSON.stringify([...state.dirty])); }
 async function loadFile(name) {
   const path = name === 'gallery' ? 'gallery/index.json' : `data/${name}.json`;
   try {
@@ -127,6 +141,7 @@ async function loadAll() {
 }
 function scheduleSave(name) {
   localStorage.setItem('wb_cache_' + name, JSON.stringify(state.db[name]));
+  state.dirty.add(name); saveDirty();
   if (!state.token) { state.sync = 'local'; updateSyncUI(); return; }
   clearTimeout(debounceStore[name]);
   debounceStore[name] = setTimeout(() => pushFile(name), 900);
@@ -149,12 +164,16 @@ async function pushFile(name, isRetry = false) {
     const j = await gh(`/repos/${cfg.owner}/${cfg.repo}/contents/data/${name}.json`, { method: 'PUT', body: JSON.stringify(body) });
     state.shas[name] = j.content.sha;
     state.sync = 'ok'; state.lastErr = '';
+    state.dirty.delete(name); saveDirty();
+    updateSyncUI();
+    return true;
   } catch (e) {
     if ((e.status === 409 || e.status === 422) && !isRetry) { state.shas[name] = undefined; return pushFile(name, true); }
     state.sync = 'err'; state.lastErr = e.message;
     toast('同步失败：' + e.message, 'err');
+    updateSyncUI();
+    return false;
   }
-  updateSyncUI();
 }
 
 /* ---------- toast / modal / confirm ---------- */
@@ -258,6 +277,7 @@ function renderSidebar() {
     </div>
     <nav class="nav"><div class="nav-label">模块</div>${items}</nav>
     <div class="side-foot">
+      <button class="sync-now" data-act="syncNow">${ic('refresh')}<span>同步</span></button>
       ${syncInfo()}
       <div class="side-actions">
         <button class="side-btn" data-act="toggleTheme">${ic(themeIcon)}<span>主题</span></button>
@@ -912,6 +932,21 @@ const ACTIONS = {
   closeModal: () => closeModal(),
   scrim: (id, el, e) => { if (e.target === el) closeModal(); },
   openSettings: () => settingsModal(),
+  syncNow: async (id, el) => {
+    if (!state.token) { toast('先在设置里配置 GitHub 令牌，才能同步上传', 'err'); settingsModal(); return; }
+    if (el) el.disabled = true;
+    try {
+      const dirty = [...state.dirty];
+      let ok = true;
+      for (const name of dirty) { const r = await pushFile(name); if (!r) ok = false; }
+      if (!ok) { toast('部分文件上传失败，稍后再试', 'err'); return; }
+      await loadAll();
+      renderAll();
+      toast(dirty.length ? `同步完成：上传 ${dirty.length} 个文件，并已拉取最新` : '已拉取最新数据');
+    } finally {
+      if (el) el.disabled = false;
+    }
+  },
   syncReload: async () => { await loadAll(); renderAll(); toast(state.offline ? '已加载本机缓存' : '数据已刷新'); },
   /* 待办 */
   toggleTask: (id) => { const t = state.db.tasks.items.find((x) => x.id === id); t.done = !t.done; scheduleSave('tasks'); renderAll(); },
@@ -1153,11 +1188,50 @@ document.addEventListener('dragend', () => {
 });
 
 /* ---------- 启动 ---------- */
-(async function init() {
+async function start() {
   renderAll();
   await loadAll();
   const m = location.hash.match(/^#\/(\w+)(?:\/(.+))?/);
   if (m) state.route = { mod: m[1], view: m[2] ? decodeURIComponent(m[2]) : routeFor(m[1]).view };
   else state.route = routeFor(state.modOrder[0]);
   renderAll();
+}
+(async function boot() {
+  if (!ACCESS.enabled) return start();
+  if (localStorage.getItem('wb_gate') === ACCESS.hash) return start();
+  showGate();
 })();
+function showGate() {
+  const root = document.createElement('div');
+  root.id = 'gate-root';
+  root.innerHTML = `<div class="gate">
+    <form class="gate-card" id="gate-form">
+      <div class="gate-mark">工</div>
+      <div class="gate-title">NickWork</div>
+      <div class="gate-sub">私有工作台 · 请输入访问密码</div>
+      <input class="input" id="gate-pass" type="password" placeholder="访问密码" autocomplete="current-password" autofocus>
+      <button class="btn primary" type="submit" style="width:100%;justify-content:center">进入</button>
+      <div class="gate-err" id="gate-err"></div>
+    </form>
+  </div>`;
+  document.body.appendChild(root);
+  $('#gate-pass').focus();
+  $('#gate-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const pass = $('#gate-pass').value;
+    const h = await sha256Hex(pass);
+    if (h === ACCESS.hash) {
+      localStorage.setItem('wb_gate', ACCESS.hash);
+      root.remove();
+      start();
+    } else {
+      $('#gate-err').textContent = '密码不对，再试试';
+      $('#gate-pass').value = '';
+      $('#gate-pass').focus();
+      const card = root.querySelector('.gate-card');
+      card.classList.remove('shake');
+      void card.offsetWidth;
+      card.classList.add('shake');
+    }
+  });
+}
